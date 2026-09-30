@@ -107,14 +107,16 @@ export default function Home(){
                     {item.credential_number && <div className="muted">ID #{item.credential_number}</div>}
                   </div>
 
-                  <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',justifyContent:'flex-end'}}>
-                    <span className={'status '+s.cls}>{s.label}</span>
+                  <div style={{display:'grid',gridTemplateColumns:'auto 150px',alignItems:'center',gap:10,minWidth:260}}>
+                    <span className={'status '+s.cls} style={{justifySelf:'end'}}>{s.label}</span>
                     {renewal ? (
-                      <a className="btn secondary" href={renewal} target="_blank" rel="noreferrer">
+                      <a className="btn secondary" href={renewal} target="_blank" rel="noreferrer" style={{textAlign:'center'}}>
                         Renew / Update
                       </a>
                     ) : (
-                      <span className="muted" style={{fontSize:13}}>No renewal link yet</span>
+                      <span className="btn secondary" style={{textAlign:'center',opacity:.55,cursor:'default'}}>
+                        No renewal link yet
+                      </span>
                     )}
                   </div>
                 </div>
