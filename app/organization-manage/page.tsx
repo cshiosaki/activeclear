@@ -26,6 +26,13 @@ const BACKGROUND_SOURCES = [
   'Other',
 ];
 
+const CPR_REQUIREMENTS = [
+  'CPR',
+  'First Aid',
+  'AED',
+  'Provider-certified course',
+];
+
 const RECOMMENDED = [
   {label:'Background Check', credential:'Background Check', sports:null, governingBodies:null},
   {label:'CPR / AED', credential:'CPR / AED', sports:null, governingBodies:null},
@@ -51,6 +58,7 @@ export default function OrganizationManage(){
   const [selected,setSelected]=useState<string[]>([]);
   const [backgroundSources,setBackgroundSources]=useState<string[]>([]);
   const [otherBackgroundSource,setOtherBackgroundSource]=useState('');
+  const [cprRequirements,setCprRequirements]=useState<string[]>([]);
   const [customName,setCustomName]=useState('');
   const [customType,setCustomType]=useState('');
   const [customDescription,setCustomDescription]=useState('');
@@ -215,6 +223,17 @@ export default function OrganizationManage(){
           if(bgErr) throw bgErr;
         }
 
+        if(rec.label==='CPR / AED'){
+          const {error:cprErr}=await supabase.from('organization_requirements')
+            .update({
+              validation_rules:{
+                required_components:cprRequirements
+              }
+            })
+            .eq('id',reqId);
+          if(cprErr) throw cprErr;
+        }
+
         const {error:mapErr}=await supabase.from('requirement_credential_types')
           .upsert(
             {requirement_id:reqId,credential_type_id:type.id},
@@ -233,6 +252,7 @@ export default function OrganizationManage(){
       setSelected([]);
       setBackgroundSources([]);
       setOtherBackgroundSource('');
+      setCprRequirements([]);
       setMsg(`${activeRoleName} added with selected requirements.`);
       await load();
     }catch(error:any){
@@ -403,6 +423,9 @@ export default function OrganizationManage(){
                     setBackgroundSources([]);
                     setOtherBackgroundSource('');
                   }
+                  if(r.label==='CPR / AED' && !e.target.checked){
+                    setCprRequirements([]);
+                  }
                 }}
                 style={{width:20,height:20}}
               />
@@ -439,6 +462,29 @@ export default function OrganizationManage(){
                     />
                   </div>
                 )}
+              </div>
+            )}
+
+            {r.label==='CPR / AED' && selected.includes('CPR / AED') && (
+              <div className="card" style={{margin:'8px 0 14px 24px',padding:14}}>
+                <div style={{fontWeight:700,marginBottom:8}}>Required training components</div>
+                <div className="list">
+                  {CPR_REQUIREMENTS.map(item=>(
+                    <label className="item" key={item} style={{cursor:'pointer'}}>
+                      <span>{item}</span>
+                      <input
+                        type="checkbox"
+                        checked={cprRequirements.includes(item)}
+                        onChange={e=>setCprRequirements(
+                          e.target.checked
+                            ? [...cprRequirements,item]
+                            : cprRequirements.filter(x=>x!==item)
+                        )}
+                        style={{width:20,height:20}}
+                      />
+                    </label>
+                  ))}
+                </div>
               </div>
             )}
           </div>
