@@ -199,7 +199,7 @@ export default function Credentials() {
     }).catch(() => null);
   }
 
-  async function requestOverride(item:any, review:any){
+  async function requestExemption(item:any, review:any){
     const existing=overrideRequests.find((x:any)=>
       x.credential_id===item.id &&
       x.requirement_id===review?.requirement_id &&
@@ -207,11 +207,11 @@ export default function Credentials() {
       x.status==='pending'
     );
     if(existing){
-      setMsg('Override review already requested.');
+      setMsg('Exemption request already submitted.');
       return;
     }
 
-    const reason=window.prompt('Tell the organization why this credential should be reviewed.');
+    const reason=window.prompt('Explain why you are requesting an exemption.');
     if(reason===null) return;
 
     const {error}=await supabase.from('credential_override_requests').insert({
@@ -228,7 +228,7 @@ export default function Credentials() {
       return;
     }
 
-    setMsg('Override review requested.');
+    setMsg('Exemption request submitted.');
     await load();
   }
 
@@ -323,7 +323,7 @@ export default function Credentials() {
                           <button
                             className="btn secondary"
                             type="button"
-                            onClick={()=>requestOverride(item,top)}
+                            onClick={()=>requestExemption(item,top)}
                           >
                             Request review
                           </button>
