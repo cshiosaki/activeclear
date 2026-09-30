@@ -38,6 +38,12 @@ const CONCUSSION_SOURCES = [
   'Other approved course',
 ];
 
+const SAFESPORT_SOURCES = [
+  'U.S. Center for SafeSport',
+  'Governing body approved abuse-prevention training',
+  'Other approved course',
+];
+
 const RECOMMENDED = [
   {label:'Background Check', credential:'Background Check', sports:null, governingBodies:null},
   {label:'CPR / AED', credential:'CPR / AED', sports:null, governingBodies:null},
@@ -66,6 +72,8 @@ export default function OrganizationManage(){
   const [cprRequirements,setCprRequirements]=useState<string[]>([]);
   const [concussionSources,setConcussionSources]=useState<string[]>([]);
   const [otherConcussionSource,setOtherConcussionSource]=useState('');
+  const [safeSportSources,setSafeSportSources]=useState<string[]>([]);
+  const [otherSafeSportSource,setOtherSafeSportSource]=useState('');
   const [customName,setCustomName]=useState('');
   const [customType,setCustomType]=useState('');
   const [customDescription,setCustomDescription]=useState('');
@@ -258,6 +266,23 @@ export default function OrganizationManage(){
           if(concussionErr) throw concussionErr;
         }
 
+        if(rec.label==='SafeSport'){
+          const courses=[
+            ...safeSportSources.filter(x=>x!=='Other approved course'),
+            ...(safeSportSources.includes('Other approved course') && otherSafeSportSource.trim()
+              ? [otherSafeSportSource.trim()]
+              : [])
+          ];
+          const {error:safeSportErr}=await supabase.from('organization_requirements')
+            .update({
+              validation_rules:{
+                accepted_courses:courses
+              }
+            })
+            .eq('id',reqId);
+          if(safeSportErr) throw safeSportErr;
+        }
+
         const {error:mapErr}=await supabase.from('requirement_credential_types')
           .upsert(
             {requirement_id:reqId,credential_type_id:type.id},
@@ -279,6 +304,8 @@ export default function OrganizationManage(){
       setCprRequirements([]);
       setConcussionSources([]);
       setOtherConcussionSource('');
+      setSafeSportSources([]);
+      setOtherSafeSportSource('');
       setMsg(`${activeRoleName} added with selected requirements.`);
       await load();
     }catch(error:any){
@@ -456,6 +483,10 @@ export default function OrganizationManage(){
                     setConcussionSources([]);
                     setOtherConcussionSource('');
                   }
+                  if(r.label==='SafeSport' && !e.target.checked){
+                    setSafeSportSources([]);
+                    setOtherSafeSportSource('');
+                  }
                 }}
                 style={{width:20,height:20}}
               />
@@ -549,6 +580,40 @@ export default function OrganizationManage(){
                       placeholder="Enter course or provider name"
                       value={otherConcussionSource}
                       onChange={e=>setOtherConcussionSource(e.target.value)}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {r.label==='SafeSport' && selected.includes('SafeSport') && (
+              <div className="card" style={{margin:'8px 0 14px 24px',padding:14}}>
+                <div style={{fontWeight:700,marginBottom:8}}>Accepted SafeSport / abuse-prevention training</div>
+                <div className="list">
+                  {SAFESPORT_SOURCES.map(source=>(
+                    <label className="item" key={source} style={{cursor:'pointer'}}>
+                      <span>{source}</span>
+                      <input
+                        type="checkbox"
+                        checked={safeSportSources.includes(source)}
+                        onChange={e=>setSafeSportSources(
+                          e.target.checked
+                            ? [...safeSportSources,source]
+                            : safeSportSources.filter(x=>x!==source)
+                        )}
+                        style={{width:20,height:20}}
+                      />
+                    </label>
+                  ))}
+                </div>
+
+                {safeSportSources.includes('Other approved course') && (
+                  <div className="field" style={{marginTop:10}}>
+                    <label>Other approved course</label>
+                    <input
+                      placeholder="Enter course or provider name"
+                      value={otherSafeSportSource}
+                      onChange={e=>setOtherSafeSportSource(e.target.value)}
                     />
                   </div>
                 )}
