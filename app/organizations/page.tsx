@@ -13,6 +13,9 @@ type Requirement = {
   requirement_status:string;
   requirement_credential_types:Array<{credential_type_id:string}>;
   requirement_roles?:Array<{role_id:string}>;
+  source_document_path?:string|null;
+  source_document_url?:string|null;
+  requires_acknowledgment?:boolean;
 };
 
 export default function Organizations(){
@@ -24,23 +27,27 @@ export default function Organizations(){
   const [roles,setRoles]=useState<Record<string,any[]>>({});
   const [selectedRole,setSelectedRole]=useState<Record<string,string>>({});
   const [credentials,setCredentials]=useState<any[]>([]);
+  const [acknowledgments,setAcknowledgments]=useState<any[]>([]);
   const [openOrg,setOpenOrg]=useState<string|null>(null);
+  const [msg,setMsg]=useState('');
 
   async function load(id:string){
-    const [{data:o},{data:m},{data:c},{data:r},{data:roleData}] = await Promise.all([
+    const [{data:o},{data:m},{data:c},{data:r},{data:roleData},{data:a}] = await Promise.all([
       supabase.rpc('list_active_organization_directory'),
       supabase.from('organization_memberships').select('*').eq('user_id',id).eq('status','active'),
       supabase.from('credentials').select('id,credential_type_id,expires_date,status'),
       supabase.from('organization_requirements')
-        .select('id,organization_id,name,description,season,requirement_status,requirement_credential_types(credential_type_id),requirement_roles(role_id)')
+        .select('id,organization_id,name,description,season,requirement_status,source_document_path,source_document_url,requires_acknowledgment,requirement_credential_types(credential_type_id),requirement_roles(role_id)')
         .eq('active',true)
         .order('name'),
-      supabase.from('organization_roles').select('*').eq('is_active',true).order('name')
+      supabase.from('organization_roles').select('*').eq('is_active',true).order('name'),
+      supabase.from('requirement_acknowledgments').select('*').eq('user_id',id)
     ]);
 
     setOrgs(o||[]);
     setMemberships(m||[]);
     setCredentials(c||[]);
+    setAcknowledgments(a||[]);
 
     const roleGrouped:Record<string,any[]> = {};
     (roleData||[]).forEach((role:any)=>{
@@ -86,6 +93,10 @@ export default function Organizations(){
   }
 
   function requirementMet(req:Requirement){
+    if(req.requires_acknowledgment){
+      return acknowledgments.some(a=>a.requirement_id===req.id);
+    }
+
     const accepted=(req.requirement_credential_types||[]).map(x=>x.credential_type_id);
     if(accepted.length===0) return false;
 
@@ -97,6 +108,50 @@ export default function Organizations(){
     });
   }
 
+  async function openRequirementDocument(req:Requirement){
+    if(req.source_document_url){
+      window.open(req.source_document_url,'_blank','noopener,noreferrer');
+      return;
+    }
+    if(!req.source_document_path)return;
+
+    const {data,error}=await supabase.storage
+      .from('requirement-documents')
+      .createSignedUrl(req.source_document_path,300);
+
+    if(error || !data?.signedUrl){
+      setMsg(error?.message || 'Could not open the document.');
+      return;
+    }
+    window.open(data.signedUrl,'_blank','noopener,noreferrer');
+  }
+
+  async function acknowledgeRequirement(req:Requirement){
+    const typedName=window.prompt('Type your full name to acknowledge that you have read and agree to this requirement.');
+    if(typedName===null)return;
+    const name=typedName.trim();
+    if(!name){
+      setMsg('Enter your full name to acknowledge the requirement.');
+      return;
+    }
+
+    const {error}=await supabase.from('requirement_acknowledgments').upsert({
+      requirement_id:req.id,
+      organization_id:(req as any).organization_id,
+      user_id:uid,
+      typed_name:name,
+      acknowledged_at:new Date().toISOString()
+    },{onConflict:'requirement_id,user_id'});
+
+    if(error){
+      setMsg(error.message);
+      return;
+    }
+
+    setMsg('Acknowledgment recorded.');
+    await load(uid);
+  }
+
   const summaries=useMemo(()=>{
     const out:Record<string,{met:number,total:number,complete:boolean}>={};
     orgs.forEach(o=>{
@@ -105,12 +160,13 @@ export default function Organizations(){
       out[o.id]={met,total:reqs.length,complete:reqs.length>0 && met===reqs.length};
     });
     return out;
-  },[orgs,requirements,credentials]);
+  },[orgs,requirements,credentials,acknowledgments]);
 
   return <AppShell>
     <div className="eyebrow">Organizations</div>
     <h1>Organization requirements</h1>
     <p className="muted">Connect to a program and ActiveClear will compare your existing credentials against that organization’s requirements.</p>
+    {msg && <div className="notice" style={{marginTop:12}}>{msg}</div>}
 
     <div className="list" style={{marginTop:24}}>
       {orgs.map(o=>{
@@ -174,6 +230,20 @@ export default function Organizations(){
                         <strong>{req.name}</strong>
                         {req.description && <div className="muted">{req.description}</div>}
                         {req.season && <div className="muted">Season: {req.season}</div>}
+                        {req.requires_acknowledgment && (
+                          <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:10}}>
+                            {(req.source_document_path || req.source_document_url) && (
+                              <button className="btn secondary" type="button" onClick={()=>openRequirementDocument(req)}>
+                                View document
+                              </button>
+                            )}
+                            {!met && (
+                              <button className="btn green" type="button" onClick={()=>acknowledgeRequirement(req)}>
+                                Acknowledge
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </div>
                       <span className={'status '+(met?'green':'red')}>{met?'Met':'Missing'}</span>
                     </div>
