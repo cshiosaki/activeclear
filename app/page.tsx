@@ -97,14 +97,27 @@ export default function Home(){
               const s=statusFor(item);
               const renewal=item.credential_types?.renewal_url;
               return (
-                <div className="item" key={item.id}>
+                <div
+                  className="item"
+                  key={item.id}
+                  style={{
+                    display:'grid',
+                    gridTemplateColumns:'minmax(260px,1.6fr) minmax(150px,.7fr) auto',
+                    gap:24,
+                    alignItems:'center'
+                  }}
+                >
                   <div>
                     <strong>{item.credential_types?.name || 'Credential'}</strong>
-                    <div className="muted">
-                      {item.expires_date ? `Expires ${item.expires_date}` : 'No expiration date entered'}
-                      {item.issuing_body ? ` · ${item.issuing_body}` : ''}
+                    {item.credential_number && <div className="muted">Membership / ID #{item.credential_number}</div>}
+                    {item.issuing_body && <div className="muted">{item.issuing_body}</div>}
+                  </div>
+
+                  <div>
+                    <div className="muted" style={{fontSize:12,textTransform:'uppercase',letterSpacing:'.08em'}}>Expiration</div>
+                    <div style={{fontWeight:700,marginTop:3}}>
+                      {item.expires_date || 'No expiration entered'}
                     </div>
-                    {item.credential_number && <div className="muted">ID #{item.credential_number}</div>}
                   </div>
 
                   <div style={{display:'grid',gridTemplateColumns:'auto 150px',alignItems:'center',gap:10,minWidth:260}}>
