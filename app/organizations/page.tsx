@@ -27,12 +27,14 @@ export default function Organizations(){
   const [roles,setRoles]=useState<Record<string,any[]>>({});
   const [selectedRole,setSelectedRole]=useState<Record<string,string>>({});
   const [credentials,setCredentials]=useState<any[]>([]);
+  const [reviews,setReviews]=useState<any[]>([]);
+  const [exemptions,setExemptions]=useState<any[]>([]);
   const [acknowledgments,setAcknowledgments]=useState<any[]>([]);
   const [openOrg,setOpenOrg]=useState<string|null>(null);
   const [msg,setMsg]=useState('');
 
   async function load(id:string){
-    const [{data:o},{data:m},{data:c},{data:r},{data:roleData},{data:a}] = await Promise.all([
+    const [{data:o},{data:m},{data:c},{data:r},{data:roleData},{data:a},{data:reviewData},{data:exemptionData}] = await Promise.all([
       supabase.rpc('list_active_organization_directory'),
       supabase.from('organization_memberships').select('*').eq('user_id',id).eq('status','active'),
       supabase.from('credentials').select('id,credential_type_id,expires_date,status'),
@@ -41,12 +43,22 @@ export default function Organizations(){
         .eq('active',true)
         .order('name'),
       supabase.from('organization_roles').select('*').eq('is_active',true).order('name'),
-      supabase.from('requirement_acknowledgments').select('*').eq('user_id',id)
+      supabase.from('requirement_acknowledgments').select('*').eq('user_id',id),
+      supabase.from('credential_requirement_reviews')
+        .select('credential_id,requirement_id,result,reviewed_at')
+        .eq('user_id',id)
+        .order('reviewed_at',{ascending:false}),
+      supabase.from('credential_override_requests')
+        .select('credential_id,requirement_id,organization_id,status,exemption_expires_date')
+        .eq('user_id',id)
+        .eq('status','approved')
     ]);
 
     setOrgs(o||[]);
     setMemberships(m||[]);
     setCredentials(c||[]);
+    setReviews(reviewData||[]);
+    setExemptions(exemptionData||[]);
     setAcknowledgments(a||[]);
 
     const roleGrouped:Record<string,any[]> = {};
@@ -92,20 +104,44 @@ export default function Organizations(){
     await load(uid);
   }
 
-  function requirementMet(req:Requirement){
+  function requirementStatus(req:Requirement){
     if(req.requires_acknowledgment){
-      return acknowledgments.some(a=>a.requirement_id===req.id);
+      return acknowledgments.some(a=>a.requirement_id===req.id) ? 'met' : 'missing';
     }
 
-    const accepted=(req.requirement_credential_types||[]).map(x=>x.credential_type_id);
-    if(accepted.length===0) return false;
+    const approvedExemption=exemptions.some((x:any)=>
+      x.requirement_id===req.id &&
+      (!x.exemption_expires_date || new Date(x.exemption_expires_date+'T23:59:59') >= new Date())
+    );
+    if(approvedExemption) return 'met';
 
-    return credentials.some(c=>{
+    const accepted=(req.requirement_credential_types||[]).map(x=>x.credential_type_id);
+    if(accepted.length===0) return 'missing';
+
+    const matchingCredentials=credentials.filter(c=>{
       if(!accepted.includes(c.credential_type_id)) return false;
       if(c.status==='rejected') return false;
       if(c.expires_date && new Date(c.expires_date+'T23:59:59') < new Date()) return false;
       return true;
     });
+
+    if(!matchingCredentials.length) return 'missing';
+
+    for(const credential of matchingCredentials){
+      const review=reviews.find((r:any)=>r.credential_id===credential.id && r.requirement_id===req.id);
+      if(review?.result==='meets_requirement') return 'met';
+    }
+
+    const hasFailure=matchingCredentials.some(credential=>{
+      const review=reviews.find((r:any)=>r.credential_id===credential.id && r.requirement_id===req.id);
+      return review && ['does_not_meet_requirement','wrong_credential_type','unreadable'].includes(review.result);
+    });
+
+    return hasFailure ? 'does_not_meet' : 'pending';
+  }
+
+  function requirementMet(req:Requirement){
+    return requirementStatus(req)==='met';
   }
 
   async function openRequirementDocument(req:Requirement){
@@ -160,7 +196,7 @@ export default function Organizations(){
       out[o.id]={met,total:reqs.length,complete:reqs.length>0 && met===reqs.length};
     });
     return out;
-  },[orgs,requirements,credentials,acknowledgments]);
+  },[orgs,requirements,credentials,reviews,exemptions,acknowledgments]);
 
   return <AppShell>
     <div className="eyebrow">Organizations</div>
@@ -224,7 +260,11 @@ export default function Organizations(){
               ) : (
                 <div className="list">
                   {reqs.map(req=>{
-                    const met=requirementMet(req);
+                    const status=requirementStatus(req);
+                    const met=status==='met';
+                    const label=status==='met'?'Met':status==='pending'?'Pending':status==='does_not_meet'?'Does Not Meet':'Missing';
+                    const cls=status==='met'?'green':status==='pending'?'amber':'red';
+
                     return <div className="item" key={req.id}>
                       <div>
                         <strong>{req.name}</strong>
@@ -245,7 +285,7 @@ export default function Organizations(){
                           </div>
                         )}
                       </div>
-                      <span className={'status '+(met?'green':'red')}>{met?'Met':'Missing'}</span>
+                      <span className={'status '+cls}>{label}</span>
                     </div>
                   })}
                 </div>
