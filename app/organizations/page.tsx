@@ -28,7 +28,7 @@ export default function Organizations(){
 
   async function load(id:string){
     const [{data:o},{data:m},{data:c},{data:r},{data:roleData}] = await Promise.all([
-      supabase.from('organizations').select('*').eq('is_active',true).order('name'),
+      supabase.rpc('list_active_organization_directory'),
       supabase.from('organization_memberships').select('*').eq('user_id',id).eq('status','active'),
       supabase.from('credentials').select('id,credential_type_id,expires_date,status'),
       supabase.from('organization_requirements')
