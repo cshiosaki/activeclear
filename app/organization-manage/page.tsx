@@ -18,6 +18,14 @@ const RECOMMENDED_ROLES = [
   'Tournament / Event Volunteer',
 ];
 
+const BACKGROUND_SOURCES = [
+  'NCSI',
+  'JDP',
+  'Local Parks & Recreation',
+  'State / Fingerprint Background Check',
+  'Other',
+];
+
 const RECOMMENDED = [
   {label:'Background Check', credential:'Background Check', sports:null, governingBodies:null},
   {label:'CPR / AED', credential:'CPR / AED', sports:null, governingBodies:null},
@@ -41,6 +49,8 @@ export default function OrganizationManage(){
   const [roles,setRoles]=useState<any[]>([]);
   const [activeRoleName,setActiveRoleName]=useState('');
   const [selected,setSelected]=useState<string[]>([]);
+  const [backgroundSources,setBackgroundSources]=useState<string[]>([]);
+  const [otherBackgroundSource,setOtherBackgroundSource]=useState('');
   const [customName,setCustomName]=useState('');
   const [customType,setCustomType]=useState('');
   const [customDescription,setCustomDescription]=useState('');
@@ -170,6 +180,7 @@ export default function OrganizationManage(){
               organization_id:orgId,
               name:rec.label,
               description:null,
+              accepted_issuers:rec.label==='Background Check' ? backgroundSources.filter(x=>x!=='Other') : null,
               requirement_status:'required',
               active:true
             })
@@ -178,6 +189,19 @@ export default function OrganizationManage(){
 
           if(error) throw error;
           reqId=req.id;
+        }
+
+        if(rec.label==='Background Check'){
+          const issuers=[
+            ...backgroundSources.filter(x=>x!=='Other'),
+            ...(backgroundSources.includes('Other') && otherBackgroundSource.trim()
+              ? [otherBackgroundSource.trim()]
+              : [])
+          ];
+          const {error:bgErr}=await supabase.from('organization_requirements')
+            .update({accepted_issuers:issuers})
+            .eq('id',reqId);
+          if(bgErr) throw bgErr;
         }
 
         const {error:mapErr}=await supabase.from('requirement_credential_types')
@@ -196,6 +220,8 @@ export default function OrganizationManage(){
       }
 
       setSelected([]);
+      setBackgroundSources([]);
+      setOtherBackgroundSource('');
       setMsg(`${activeRoleName} added with selected requirements.`);
       await load();
     }catch(error:any){
@@ -354,15 +380,57 @@ export default function OrganizationManage(){
       </p>
       <div className="list" style={{marginTop:12}}>
         {recommendedForOrg.map(r=>(
-          <label className="item" key={r.label} style={{cursor:'pointer'}}>
-            <strong>{r.label}</strong>
-            <input
-              type="checkbox"
-              checked={selected.includes(r.label)}
-              onChange={e=>setSelected(e.target.checked?[...selected,r.label]:selected.filter(x=>x!==r.label))}
-              style={{width:20,height:20}}
-            />
-          </label>
+          <div key={r.label}>
+            <label className="item" style={{cursor:'pointer'}}>
+              <strong>{r.label}</strong>
+              <input
+                type="checkbox"
+                checked={selected.includes(r.label)}
+                onChange={e=>{
+                  setSelected(e.target.checked?[...selected,r.label]:selected.filter(x=>x!==r.label));
+                  if(r.label==='Background Check' && !e.target.checked){
+                    setBackgroundSources([]);
+                    setOtherBackgroundSource('');
+                  }
+                }}
+                style={{width:20,height:20}}
+              />
+            </label>
+
+            {r.label==='Background Check' && selected.includes('Background Check') && (
+              <div className="card" style={{margin:'8px 0 14px 24px',padding:14}}>
+                <div style={{fontWeight:700,marginBottom:8}}>Accepted background check source(s)</div>
+                <div className="list">
+                  {BACKGROUND_SOURCES.map(source=>(
+                    <label className="item" key={source} style={{cursor:'pointer'}}>
+                      <span>{source}</span>
+                      <input
+                        type="checkbox"
+                        checked={backgroundSources.includes(source)}
+                        onChange={e=>setBackgroundSources(
+                          e.target.checked
+                            ? [...backgroundSources,source]
+                            : backgroundSources.filter(x=>x!==source)
+                        )}
+                        style={{width:20,height:20}}
+                      />
+                    </label>
+                  ))}
+                </div>
+
+                {backgroundSources.includes('Other') && (
+                  <div className="field" style={{marginTop:10}}>
+                    <label>Other approved background source</label>
+                    <input
+                      placeholder="Enter provider or agency name"
+                      value={otherBackgroundSource}
+                      onChange={e=>setOtherBackgroundSource(e.target.value)}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         ))}
       </div>
 
