@@ -25,25 +25,18 @@ export default function Credentials() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [existingDocumentPath, setExistingDocumentPath] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [reviews, setReviews] = useState<any[]>([]);
-  const [reviewingId, setReviewingId] = useState<string | null>(null);
 
   async function load() {
-    const [{ data: t }, { data: c }, { data: r }] = await Promise.all([
+    const [{ data: t }, { data: c }] = await Promise.all([
       supabase.from('credential_types').select('*').order('name'),
       supabase
         .from('credentials')
         .select('*,credential_types(name,renewal_url)')
         .order('created_at', { ascending: false }),
-      supabase
-        .from('credential_requirement_reviews')
-        .select('*,organization_requirements(name),organizations(name)')
-        .order('reviewed_at', { ascending: false }),
     ]);
 
     setTypes(t || []);
     setItems(c || []);
-    setReviews(r || []);
 
     if (!form.credential_type_id && t?.[0]) {
       setForm((current: any) => ({ ...current, credential_type_id: t[0].id }));
@@ -180,31 +173,18 @@ export default function Credentials() {
   }
 
   async function runAIReview(credentialId: string) {
-    setReviewingId(credentialId);
-    setMsg('');
-
     const { data: sessionData } = await supabase.auth.getSession();
     const token = sessionData.session?.access_token;
+    if (!token) return;
 
-    if (!token) {
-      setMsg('Please sign in again before running AI review.');
-      setReviewingId(null);
-      return;
-    }
-
-    const res = await fetch('/api/ai-review', {
+    await fetch('/api/ai-review', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({ credentialId }),
-    });
-
-    const body = await res.json().catch(() => ({}));
-    setMsg(res.ok ? (body.message || 'AI review complete.') : (body.error || 'AI review failed.'));
-    await load();
-    setReviewingId(null);
+    }).catch(() => null);
   }
 
   async function deleteCredential(item: any) {
@@ -259,43 +239,10 @@ export default function Credentials() {
                   </div>
 
                   <div style={{ display: 'grid', gap: 8, justifyItems: 'end' }}>
-                    {(() => {
-                      const itemReviews = reviews.filter((r:any) => r.credential_id === item.id);
-                      if (!itemReviews.length) return item.document_path ? <span className="status amber">Needs Review</span> : null;
-
-                      const priority = [
-                        'wrong_credential_type',
-                        'unreadable',
-                        'does_not_meet_requirement',
-                        'needs_human_review',
-                        'meets_requirement'
-                      ];
-                      const top = [...itemReviews].sort(
-                        (a:any,b:any) => priority.indexOf(a.result) - priority.indexOf(b.result)
-                      )[0];
-
-                      const labels:any = {
-                        meets_requirement: 'Meets Requirement',
-                        needs_human_review: 'Needs Review',
-                        does_not_meet_requirement: 'Does Not Meet',
-                        unreadable: 'Unreadable',
-                        wrong_credential_type: 'Wrong Credential'
-                      };
-                      const cls = top.result === 'meets_requirement' ? 'green' : top.result === 'needs_human_review' ? 'amber' : 'red';
-
-                      return <span className={'status ' + cls}>{labels[top.result] || 'Needs Review'}</span>;
-                    })()}
+                    <span className={'status ' + (item.status==='verified' ? 'green' : item.status==='rejected' ? 'red' : 'amber')}>
+                      {item.status==='verified' ? 'Verified' : item.status==='rejected' ? 'Rejected' : 'Pending'}
+                    </span>
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      {item.document_path && (
-                        <button
-                          className="btn secondary"
-                          type="button"
-                          disabled={reviewingId === item.id}
-                          onClick={() => runAIReview(item.id)}
-                        >
-                          {reviewingId === item.id ? 'Reviewing…' : 'Review'}
-                        </button>
-                      )}
                       <button className="btn secondary" type="button" onClick={() => startEdit(item)}>
                         Edit
                       </button>
