@@ -40,7 +40,6 @@ export default function OrganizationManage(){
   const [requirements,setRequirements]=useState<any[]>([]);
   const [roles,setRoles]=useState<any[]>([]);
   const [activeRoleName,setActiveRoleName]=useState('');
-  const [customRole,setCustomRole]=useState('');
   const [selected,setSelected]=useState<string[]>([]);
   const [customName,setCustomName]=useState('');
   const [customType,setCustomType]=useState('');
@@ -233,35 +232,21 @@ export default function OrganizationManage(){
     <p className="muted">Choose a role, highlight the requirements for that role, then add them together.</p>
 
     <section className="card" style={{marginTop:24}}>
-      <h2>1. Choose role</h2>
-      <div style={{display:'flex',gap:10,flexWrap:'wrap',marginTop:12}}>
-        {RECOMMENDED_ROLES.map(role=>(
-          <button
-            key={role}
-            type="button"
-            onClick={()=>setActiveRoleName(role)}
-            className={'btn '+(activeRoleName===role?'green':'secondary')}
-          >
-            {role}
-          </button>
-        ))}
-      </div>
+      <h2>1. Role</h2>
+      <p className="muted">Start typing to choose a common role, or enter your own role name.</p>
 
-      <div className="field" style={{marginTop:16,maxWidth:420}}>
-        <label>Other / custom role</label>
-        <div style={{display:'flex',gap:8}}>
-          <input value={customRole} onChange={e=>setCustomRole(e.target.value)} placeholder="Example: Competition Instructor"/>
-          <button
-            type="button"
-            className="btn secondary"
-            onClick={()=>{if(customRole.trim()){setActiveRoleName(customRole.trim());setCustomRole('')}}}
-          >
-            Use role
-          </button>
-        </div>
+      <div className="field" style={{marginTop:16,maxWidth:520}}>
+        <label>Role name</label>
+        <input
+          list="recommended-roles"
+          value={activeRoleName}
+          onChange={e=>setActiveRoleName(e.target.value)}
+          placeholder="Example: Competition Instructor"
+        />
+        <datalist id="recommended-roles">
+          {RECOMMENDED_ROLES.map(role=><option key={role} value={role}/>)}
+        </datalist>
       </div>
-
-      {activeRoleName && <div className="notice" style={{marginTop:14}}>Selected role: <strong>{activeRoleName}</strong></div>}
     </section>
 
     <section className="card" style={{marginTop:24}}>
