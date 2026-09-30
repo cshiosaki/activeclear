@@ -25,18 +25,24 @@ export default function Credentials() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [existingDocumentPath, setExistingDocumentPath] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [reviews, setReviews] = useState<any[]>([]);
 
   async function load() {
-    const [{ data: t }, { data: c }] = await Promise.all([
+    const [{ data: t }, { data: c }, { data: r }] = await Promise.all([
       supabase.from('credential_types').select('*').order('name'),
       supabase
         .from('credentials')
         .select('*,credential_types(name,renewal_url)')
         .order('created_at', { ascending: false }),
+      supabase
+        .from('credential_requirement_reviews')
+        .select('credential_id,result,reasons,reviewed_at')
+        .order('reviewed_at', { ascending: false }),
     ]);
 
     setTypes(t || []);
     setItems(c || []);
+    setReviews(r || []);
 
     if (!form.credential_type_id && t?.[0]) {
       setForm((current: any) => ({ ...current, credential_type_id: t[0].id }));
@@ -239,9 +245,34 @@ export default function Credentials() {
                   </div>
 
                   <div style={{ display: 'grid', gap: 8, justifyItems: 'end' }}>
-                    <span className={'status ' + (item.status==='verified' ? 'green' : item.status==='rejected' ? 'red' : 'amber')}>
-                      {item.status==='verified' ? 'Verified' : item.status==='rejected' ? 'Rejected' : 'Pending'}
-                    </span>
+                    {(() => {
+                      const itemReviews = reviews.filter((r:any)=>r.credential_id===item.id);
+                      const priority = ['wrong_credential_type','unreadable','does_not_meet_requirement','needs_human_review','meets_requirement'];
+                      const top = itemReviews.length
+                        ? [...itemReviews].sort((a:any,b:any)=>priority.indexOf(a.result)-priority.indexOf(b.result))[0]
+                        : null;
+
+                      const isFail = top && ['wrong_credential_type','unreadable','does_not_meet_requirement'].includes(top.result);
+                      const label = isFail
+                        ? 'Does Not Meet'
+                        : top?.result==='meets_requirement'
+                          ? 'Verified'
+                          : item.status==='rejected'
+                            ? 'Rejected'
+                            : item.status==='verified'
+                              ? 'Verified'
+                              : 'Pending';
+                      const cls = isFail || item.status==='rejected' ? 'red' : label==='Verified' ? 'green' : 'amber';
+
+                      return <>
+                        <span className={'status ' + cls}>{label}</span>
+                        {isFail && top?.reasons?.length>0 && (
+                          <div className="muted" style={{maxWidth:260,textAlign:'right',fontSize:13,lineHeight:1.35}}>
+                            {top.reasons.join(' ')}
+                          </div>
+                        )}
+                      </>;
+                    })()}
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                       <button className="btn secondary" type="button" onClick={() => startEdit(item)}>
                         Edit
