@@ -66,6 +66,7 @@ export default function OrganizationSignup(){
     organization_type:'',
     sport:'',
     governing_body:'',
+    other_governing_body:'',
     description:'',
     admin_title:'',
     contact_name:'',
@@ -105,7 +106,7 @@ export default function OrganizationSignup(){
   },[router]);
 
   function setSport(sport:string){
-    setForm({...form,sport,governing_body:''});
+    setForm({...form,sport,governing_body:'',other_governing_body:''});
   }
 
   async function createOrganization(e:FormEvent){
@@ -118,7 +119,7 @@ export default function OrganizationSignup(){
     const {data,error}=await supabase.rpc('create_organization_for_current_user',{
       p_name:form.name.trim(),
       p_sport:form.sport || null,
-      p_governing_body:form.governing_body || null,
+      p_governing_body:(form.governing_body==='Other' ? form.other_governing_body.trim() : form.governing_body) || null,
       p_organization_type:form.organization_type || 'Club',
       p_description:form.description || null,
       p_admin_title:form.admin_title || null,
@@ -137,6 +138,14 @@ export default function OrganizationSignup(){
       setMsg(error.message);
       setBusy(false);
       return;
+    }
+
+    if(form.governing_body==='Other' && form.other_governing_body.trim()){
+      await supabase.rpc('add_governing_body_option',{
+        p_sport:form.sport,
+        p_name:form.other_governing_body.trim(),
+        p_source_organization_id:data
+      });
     }
 
     setMsg('Organization created. Opening setup…');
@@ -236,11 +245,28 @@ export default function OrganizationSignup(){
 
           <div className="field">
             <label>Governing body / affiliation</label>
-            <select disabled={!form.sport} value={form.governing_body} onChange={e=>setForm({...form,governing_body:e.target.value})}>
+            <select
+              disabled={!form.sport}
+              value={form.governing_body}
+              onChange={e=>setForm({...form,governing_body:e.target.value,other_governing_body:''})}
+            >
               <option value="">{form.sport ? 'Select governing body / affiliation' : 'Select sport first'}</option>
               {governingOptions.map(x=><option key={x} value={x}>{x}</option>)}
             </select>
           </div>
+
+          {form.governing_body==='Other' && (
+            <div className="field">
+              <label>Enter governing body / affiliation</label>
+              <input
+                required
+                placeholder="Type the full organization name"
+                value={form.other_governing_body}
+                onChange={e=>setForm({...form,other_governing_body:e.target.value})}
+              />
+              <small className="muted">ActiveClear will save this as a new option for future organization setups.</small>
+            </div>
+          )}
 
           <h3>Organization contact information</h3>
           <div className="row">
