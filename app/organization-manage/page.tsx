@@ -21,6 +21,7 @@ const RECOMMENDED_ROLES = [
 const BACKGROUND_SOURCES = [
   'NCSI',
   'JDP',
+  'Sterling Volunteers',
   'Local Parks & Recreation',
   'State / Fingerprint Background Check',
   'Other',
