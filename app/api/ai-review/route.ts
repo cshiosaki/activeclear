@@ -152,6 +152,8 @@ export async function POST(req: NextRequest) {
     'Evaluate only what is visible or reliably extractable from the submitted document. Do not invent missing information.',
     'The account holder attested that the document is authentic, but your job is to flag inconsistencies, missing information, wrong document types, unreadable content, expiration, and requirement mismatches.',
     'If the evidence is ambiguous or important information cannot be verified, use needs_human_review rather than guessing.',
+    'If the document is a background check, evaluate only compliance-relevant clearance information such as provider, candidate name, order/completion/eligibility date, clear/eligible status, and valid-through/expiration if shown.',
+    'Do not extract, return, or store Social Security numbers, dates of birth, street addresses, phone numbers, criminal-history details, search-result details, or other sensitive background-report contents.',
     '',
     `Profile name: ${profileName || 'Not provided'}`,
     `Selected credential type: ${credentialType?.name || 'Unknown'}`,
