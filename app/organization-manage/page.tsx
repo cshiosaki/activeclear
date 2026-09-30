@@ -54,7 +54,7 @@ const RECOMMENDED = [
   {label:'Background Check', credential:'Background Check', sports:null, governingBodies:null},
   {label:'CPR / AED', credential:'CPR / AED', sports:null, governingBodies:null},
   {label:'Concussion Training', credential:'Concussion Training', sports:null, governingBodies:null},
-  {label:'SafeSport', credential:'SafeSport', sports:null, governingBodies:null},
+  {label:'SafeSport — Yearly Renewal', credential:'SafeSport', sports:null, governingBodies:null},
   {label:'Code of Conduct', credential:'Code of Conduct', sports:null, governingBodies:null},
   {label:'Photo ID', credential:'Photo ID', sports:null, governingBodies:null},
   {label:'NAYS Coach Certification', credential:'NAYS Coach Certification', sports:['Football'], governingBodies:['TYSA']},
@@ -278,7 +278,7 @@ export default function OrganizationManage(){
           if(concussionErr) throw concussionErr;
         }
 
-        if(rec.label==='SafeSport'){
+        if(rec.label==='SafeSport — Yearly Renewal'){
           const courses=[
             ...safeSportSources.filter(x=>x!=='Other approved course'),
             ...(safeSportSources.includes('Other approved course') && otherSafeSportSource.trim()
@@ -523,7 +523,7 @@ export default function OrganizationManage(){
                     setConcussionSources([]);
                     setOtherConcussionSource('');
                   }
-                  if(r.label==='SafeSport' && !e.target.checked){
+                  if(r.label==='SafeSport — Yearly Renewal' && !e.target.checked){
                     setSafeSportSources([]);
                     setOtherSafeSportSource('');
                   }
@@ -631,7 +631,7 @@ export default function OrganizationManage(){
               </div>
             )}
 
-            {r.label==='SafeSport' && selected.includes('SafeSport') && (
+            {r.label==='SafeSport — Yearly Renewal' && selected.includes('SafeSport — Yearly Renewal') && (
               <div className="card" style={{margin:'8px 0 14px 24px',padding:14}}>
                 <div style={{fontWeight:700,marginBottom:8}}>Accepted SafeSport / abuse-prevention training</div>
                 <div className="list">
