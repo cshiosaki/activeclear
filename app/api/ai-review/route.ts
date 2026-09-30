@@ -32,6 +32,21 @@ function responseText(payload: any) {
   return '';
 }
 
+function openAIFilePart(mime:string, filename:string, dataUrl:string) {
+  if (mime.startsWith('image/')) {
+    return {
+      type: 'input_image',
+      image_url: dataUrl,
+    };
+  }
+
+  return {
+    type: 'input_file',
+    filename,
+    file_data: dataUrl,
+  };
+}
+
 export async function POST(req: NextRequest) {
   const authorization = req.headers.get('authorization');
   if (!authorization?.startsWith('Bearer ')) {
@@ -202,11 +217,13 @@ export async function POST(req: NextRequest) {
       type: 'input_text',
       text: `Reference sample for requirement "${requirement.name}". Use this only as an example of an acceptable credential, not as the sole source of truth.`
     });
-    sampleContent.push({
-      type: 'input_file',
-      filename: sampleName,
-      file_data: `data:${sampleMime};base64,${sampleBuffer.toString('base64')}`
-    });
+    sampleContent.push(
+      openAIFilePart(
+        sampleMime,
+        sampleName,
+        `data:${sampleMime};base64,${sampleBuffer.toString('base64')}`
+      )
+    );
   }
 
   const ai = await fetch('https://api.openai.com/v1/responses', {
@@ -221,7 +238,7 @@ export async function POST(req: NextRequest) {
         role: 'user',
         content: [
           { type: 'input_text', text: prompt },
-          { type: 'input_file', filename, file_data: fileData },
+          openAIFilePart(mime, filename, fileData),
           ...sampleContent
         ]
       }],
