@@ -74,7 +74,7 @@ export default function Login(){
      onClick={()=>setPortal('admin')}
      style={{textAlign:'left',cursor:'pointer',border:portal==='admin'?'2px solid #1f8f5f':undefined}}
     >
-     <strong>Company / Organization Admin</strong>
+     <strong>Organization Sign In</strong>
      <div className="muted" style={{marginTop:6}}>Manage organization setup, roles, requirements, and participants.</div>
     </button>
    </div>
@@ -110,7 +110,7 @@ export default function Login(){
 
     <button className="btn green" disabled={busy}>
      {busy?'Please wait…':mode==='login'
-      ? portal==='admin'?'Sign in to Admin Portal':'Sign in to Individual Portal'
+      ? portal==='admin'?'Sign in to Organization Portal':'Sign in to Coach Portal'
       :'Create ActiveClear account'}
     </button>
    </form>
