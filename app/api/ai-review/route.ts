@@ -88,7 +88,7 @@ export async function POST(req: NextRequest) {
 
   const { data: requirements, error: reqError } = await supabase
     .from('organization_requirements')
-    .select('id,organization_id,name,description,season,must_be_valid_through_season,validation_rules,requirement_credential_types!inner(credential_type_id),organizations(name)')
+    .select('id,organization_id,name,description,season,must_be_valid_through_season,validation_rules,official_url,accepted_issuer,ai_review_notes,sample_document_path,requirement_credential_types!inner(credential_type_id),organizations(name)')
     .in('organization_id', orgIds)
     .eq('active', true)
     .eq('requirement_credential_types.credential_type_id', credential.credential_type_id);
@@ -126,6 +126,10 @@ export async function POST(req: NextRequest) {
     season: r.season,
     must_be_valid_through_season: r.must_be_valid_through_season,
     validation_rules: r.validation_rules || {},
+    official_url: r.official_url || null,
+    accepted_issuer: r.accepted_issuer || null,
+    ai_review_notes: r.ai_review_notes || null,
+    has_sample_certificate: !!r.sample_document_path,
   }));
 
   const prompt = [
@@ -183,6 +187,28 @@ export async function POST(req: NextRequest) {
     }
   };
 
+  const sampleContent:any[] = [];
+  for (const requirement of requirements as any[]) {
+    if (!requirement.sample_document_path) continue;
+    const { data: sampleBlob } = await supabase.storage
+      .from('requirement-samples')
+      .download(requirement.sample_document_path);
+    if (!sampleBlob) continue;
+
+    const sampleBuffer = Buffer.from(await sampleBlob.arrayBuffer());
+    const sampleMime = sampleBlob.type || 'application/pdf';
+    const sampleName = requirement.sample_document_path.split('/').pop() || 'sample.pdf';
+    sampleContent.push({
+      type: 'input_text',
+      text: `Reference sample for requirement "${requirement.name}". Use this only as an example of an acceptable credential, not as the sole source of truth.`
+    });
+    sampleContent.push({
+      type: 'input_file',
+      filename: sampleName,
+      file_data: `data:${sampleMime};base64,${sampleBuffer.toString('base64')}`
+    });
+  }
+
   const ai = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: {
@@ -195,7 +221,8 @@ export async function POST(req: NextRequest) {
         role: 'user',
         content: [
           { type: 'input_text', text: prompt },
-          { type: 'input_file', filename, file_data: fileData }
+          { type: 'input_file', filename, file_data: fileData },
+          ...sampleContent
         ]
       }],
       text: {
