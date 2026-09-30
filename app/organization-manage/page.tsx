@@ -44,6 +44,12 @@ const SAFESPORT_SOURCES = [
   'Other approved course',
 ];
 
+const CODE_OF_CONDUCT_OPTIONS = [
+  'Organization Code of Conduct',
+  'Governing Body Code of Conduct',
+  'Signed acknowledgment required',
+];
+
 const RECOMMENDED = [
   {label:'Background Check', credential:'Background Check', sports:null, governingBodies:null},
   {label:'CPR / AED', credential:'CPR / AED', sports:null, governingBodies:null},
@@ -74,6 +80,7 @@ export default function OrganizationManage(){
   const [otherConcussionSource,setOtherConcussionSource]=useState('');
   const [safeSportSources,setSafeSportSources]=useState<string[]>([]);
   const [otherSafeSportSource,setOtherSafeSportSource]=useState('');
+  const [codeOfConductOptions,setCodeOfConductOptions]=useState<string[]>([]);
   const [customName,setCustomName]=useState('');
   const [customType,setCustomType]=useState('');
   const [customDescription,setCustomDescription]=useState('');
@@ -283,6 +290,17 @@ export default function OrganizationManage(){
           if(safeSportErr) throw safeSportErr;
         }
 
+        if(rec.label==='Code of Conduct'){
+          const {error:conductErr}=await supabase.from('organization_requirements')
+            .update({
+              validation_rules:{
+                code_of_conduct_options:codeOfConductOptions
+              }
+            })
+            .eq('id',reqId);
+          if(conductErr) throw conductErr;
+        }
+
         const {error:mapErr}=await supabase.from('requirement_credential_types')
           .upsert(
             {requirement_id:reqId,credential_type_id:type.id},
@@ -306,6 +324,7 @@ export default function OrganizationManage(){
       setOtherConcussionSource('');
       setSafeSportSources([]);
       setOtherSafeSportSource('');
+      setCodeOfConductOptions([]);
       setMsg(`${activeRoleName} added with selected requirements.`);
       await load();
     }catch(error:any){
@@ -487,6 +506,9 @@ export default function OrganizationManage(){
                     setSafeSportSources([]);
                     setOtherSafeSportSource('');
                   }
+                  if(r.label==='Code of Conduct' && !e.target.checked){
+                    setCodeOfConductOptions([]);
+                  }
                 }}
                 style={{width:20,height:20}}
               />
@@ -617,6 +639,29 @@ export default function OrganizationManage(){
                     />
                   </div>
                 )}
+              </div>
+            )}
+
+            {r.label==='Code of Conduct' && selected.includes('Code of Conduct') && (
+              <div className="card" style={{margin:'8px 0 14px 24px',padding:14}}>
+                <div style={{fontWeight:700,marginBottom:8}}>Code of Conduct requirements</div>
+                <div className="list">
+                  {CODE_OF_CONDUCT_OPTIONS.map(item=>(
+                    <label className="item" key={item} style={{cursor:'pointer'}}>
+                      <span>{item}</span>
+                      <input
+                        type="checkbox"
+                        checked={codeOfConductOptions.includes(item)}
+                        onChange={e=>setCodeOfConductOptions(
+                          e.target.checked
+                            ? [...codeOfConductOptions,item]
+                            : codeOfConductOptions.filter(x=>x!==item)
+                        )}
+                        style={{width:20,height:20}}
+                      />
+                    </label>
+                  ))}
+                </div>
               </div>
             )}
           </div>
