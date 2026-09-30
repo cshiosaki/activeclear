@@ -261,11 +261,29 @@ export default function Credentials() {
                   <div style={{ display: 'grid', gap: 8, justifyItems: 'end' }}>
                     {(() => {
                       const itemReviews = reviews.filter((r:any) => r.credential_id === item.id);
-                      if (!itemReviews.length) return item.document_path ? <span className="status amber">AI review pending</span> : null;
-                      const flagged = itemReviews.some((r:any) => r.result !== 'meets_requirement');
-                      return <span className={'status ' + (flagged ? 'red' : 'green')}>
-                        {flagged ? 'AI flagged' : 'AI meets requirements'}
-                      </span>;
+                      if (!itemReviews.length) return item.document_path ? <span className="status amber">Needs Review</span> : null;
+
+                      const priority = [
+                        'wrong_credential_type',
+                        'unreadable',
+                        'does_not_meet_requirement',
+                        'needs_human_review',
+                        'meets_requirement'
+                      ];
+                      const top = [...itemReviews].sort(
+                        (a:any,b:any) => priority.indexOf(a.result) - priority.indexOf(b.result)
+                      )[0];
+
+                      const labels:any = {
+                        meets_requirement: 'Meets Requirement',
+                        needs_human_review: 'Needs Review',
+                        does_not_meet_requirement: 'Does Not Meet',
+                        unreadable: 'Unreadable',
+                        wrong_credential_type: 'Wrong Credential'
+                      };
+                      const cls = top.result === 'meets_requirement' ? 'green' : top.result === 'needs_human_review' ? 'amber' : 'red';
+
+                      return <span className={'status ' + cls}>{labels[top.result] || 'Needs Review'}</span>;
                     })()}
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                       {item.document_path && (
