@@ -105,20 +105,31 @@ export default function OrganizationManage(){
 
   const recommendedForOrg=useMemo(()=>{
     const sport=(org?.sport || '').trim();
-    const governing=(org?.governing_body || '').trim();
+    const governingBodies:Array<string> =
+      Array.isArray(org?.governing_bodies) && org.governing_bodies.length
+        ? org.governing_bodies
+        : (org?.governing_body ? [org.governing_body] : []);
+
     return RECOMMENDED.filter(item=>{
       const sportOk=!item.sports || item.sports.includes(sport);
-      const governingOk=!item.governingBodies || item.governingBodies.includes(governing);
+      const governingOk=!item.governingBodies ||
+        item.governingBodies.some(body=>governingBodies.includes(body));
       return sportOk && governingOk;
     });
   },[org]);
 
   const credentialTypesForOrg=useMemo(()=>{
     const sport=(org?.sport || '').trim();
-    const governing=(org?.governing_body || '').trim();
+    const governingBodies:Array<string> =
+      Array.isArray(org?.governing_bodies) && org.governing_bodies.length
+        ? org.governing_bodies
+        : (org?.governing_body ? [org.governing_body] : []);
+
     return types.filter((t:any)=>{
       const sportOk=!t.applicable_sports || t.applicable_sports.length===0 || t.applicable_sports.includes(sport);
-      const governingOk=!t.applicable_governing_bodies || t.applicable_governing_bodies.length===0 || t.applicable_governing_bodies.includes(governing);
+      const governingOk=!t.applicable_governing_bodies ||
+        t.applicable_governing_bodies.length===0 ||
+        t.applicable_governing_bodies.some((body:string)=>governingBodies.includes(body));
       return sportOk && governingOk;
     });
   },[types,org]);
@@ -376,7 +387,7 @@ export default function OrganizationManage(){
     <section className="card" style={{marginTop:24}}>
       <h2>2. Select requirements</h2>
       <p className="muted">
-        Showing requirements for {org.sport || 'this activity'}{org.governing_body ? ` · ${org.governing_body}` : ''}.
+        Showing requirements for {org.sport || 'this activity'}{(org.governing_bodies?.length ? ` · ${org.governing_bodies.join(' / ')}` : org.governing_body ? ` · ${org.governing_body}` : '')}.
       </p>
       <div className="list" style={{marginTop:12}}>
         {recommendedForOrg.map(r=>(
