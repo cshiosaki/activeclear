@@ -93,12 +93,6 @@ export default function OrganizationManage(){
 
   useEffect(()=>{if(orgId) load()},[orgId]);
 
-  useEffect(()=>{
-    if(credentialTypesForOrg.length && !credentialTypesForOrg.some((t:any)=>t.id===customType)){
-      setCustomType(credentialTypesForOrg[0].id);
-    }
-  },[credentialTypesForOrg,customType]);
-
   const recommendedForOrg=useMemo(()=>{
     const sport=(org?.sport || '').trim();
     const governing=(org?.governing_body || '').trim();
@@ -124,6 +118,12 @@ export default function OrganizationManage(){
     types.forEach(t=>m[t.name]=t);
     return m;
   },[types]);
+
+  useEffect(()=>{
+    if(credentialTypesForOrg.length && !credentialTypesForOrg.some((t:any)=>t.id===customType)){
+      setCustomType(credentialTypesForOrg[0].id);
+    }
+  },[credentialTypesForOrg,customType]);
 
   async function ensureRole(roleName:string){
     const existing=roles.find((r:any)=>r.name===roleName);
@@ -267,6 +267,52 @@ export default function OrganizationManage(){
       setMsg(error?.message || 'Could not add custom requirement.');
     }
 
+    setBusy(false);
+  }
+
+  async function editRole(role:any){
+    const nextName=window.prompt('Edit role name', role.name);
+    if(nextName===null) return;
+    const name=nextName.trim();
+    if(!name || name===role.name) return;
+
+    setBusy(true);
+    setMsg('');
+    const {error}=await supabase.from('organization_roles')
+      .update({name})
+      .eq('id',role.id)
+      .eq('organization_id',orgId);
+
+    if(error){
+      setMsg(error.message);
+    }else{
+      setMsg('Role updated.');
+      if(activeRoleName===role.name) setActiveRoleName(name);
+      await load();
+    }
+    setBusy(false);
+  }
+
+  async function deleteRole(role:any){
+    const ok=window.confirm(
+      `Delete "${role.name}"? This will remove its requirement assignments. Existing people using this role will need to choose a role again.`
+    );
+    if(!ok) return;
+
+    setBusy(true);
+    setMsg('');
+    const {error}=await supabase.from('organization_roles')
+      .delete()
+      .eq('id',role.id)
+      .eq('organization_id',orgId);
+
+    if(error){
+      setMsg(error.message);
+    }else{
+      setMsg('Role deleted.');
+      if(activeRoleName===role.name) setActiveRoleName('');
+      await load();
+    }
     setBusy(false);
   }
 
