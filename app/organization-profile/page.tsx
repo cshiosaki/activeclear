@@ -49,7 +49,10 @@ export default function OrganizationProfile(){
       address_line2:form.address_line2 || null,
       city:form.city || null,
       state:form.state || null,
-      postal_code:form.postal_code || null
+      postal_code:form.postal_code || null,
+      compliance_notification_email:form.compliance_notification_email || null,
+      notify_when_compliant:form.notify_when_compliant ?? true,
+      notify_when_noncompliant:form.notify_when_noncompliant ?? true
     }).eq('id',orgId);
 
     setMsg(error?.message || 'Organization profile updated.');
@@ -86,6 +89,38 @@ export default function OrganizationProfile(){
         <div className="field"><label>Contact email</label><input type="email" value={form.contact_email||''} onChange={e=>update('contact_email',e.target.value)}/></div>
         <div className="field"><label>Contact phone</label><input value={form.contact_phone||''} onChange={e=>update('contact_phone',e.target.value)}/></div>
         <div className="field"><label>Website</label><input value={form.website||''} onChange={e=>update('website',e.target.value)}/></div>
+      </div>
+
+      <h3>Compliance notifications</h3>
+      <div className="field">
+        <label>Notification email</label>
+        <input
+          type="email"
+          placeholder="compliance@example.org"
+          value={form.compliance_notification_email||''}
+          onChange={e=>update('compliance_notification_email',e.target.value)}
+        />
+        <small className="muted">ActiveClear will use this address for compliance status notifications.</small>
+      </div>
+      <div className="list">
+        <label className="item" style={{cursor:'pointer'}}>
+          <span>Notify when someone becomes compliant</span>
+          <input
+            type="checkbox"
+            checked={form.notify_when_compliant ?? true}
+            onChange={e=>update('notify_when_compliant',e.target.checked)}
+            style={{width:20,height:20}}
+          />
+        </label>
+        <label className="item" style={{cursor:'pointer'}}>
+          <span>Notify when someone falls out of compliance</span>
+          <input
+            type="checkbox"
+            checked={form.notify_when_noncompliant ?? true}
+            onChange={e=>update('notify_when_noncompliant',e.target.checked)}
+            style={{width:20,height:20}}
+          />
+        </label>
       </div>
 
       <h3>Address</h3>
