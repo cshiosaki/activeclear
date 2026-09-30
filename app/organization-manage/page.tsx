@@ -236,7 +236,7 @@ export default function OrganizationManage(){
             ))}
           </div>
           <button className="btn green" style={{marginTop:14}} disabled={busy || selectedRoles.length===0} onClick={addRecommendedRoles}>
-            Add selected roles
+            Add roles
           </button>
         </div>
 
