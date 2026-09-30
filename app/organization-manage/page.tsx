@@ -19,17 +19,17 @@ const RECOMMENDED_ROLES = [
 ];
 
 const RECOMMENDED = [
-  {label:'Background Check', credential:'Background Check'},
-  {label:'CPR / AED', credential:'CPR / AED'},
-  {label:'Concussion Training', credential:'Concussion Training'},
-  {label:'SafeSport', credential:'SafeSport'},
-  {label:'NAYS Coach Certification', credential:'NAYS Coach Certification'},
-  {label:'Code of Conduct', credential:'Code of Conduct'},
-  {label:'Photo ID', credential:'Photo ID'},
-  {label:'USJF Membership', credential:'USJF Membership'},
-  {label:'USA Judo Membership', credential:'USA Judo Membership'},
-  {label:'Judo Coaching / Instructor Certification', credential:'Judo Coaching / Instructor Certification'},
-  {label:'Little League Abuse Awareness Training', credential:'Little League Abuse Awareness Training'},
+  {label:'Background Check', credential:'Background Check', sports:null},
+  {label:'CPR / AED', credential:'CPR / AED', sports:null},
+  {label:'Concussion Training', credential:'Concussion Training', sports:null},
+  {label:'SafeSport', credential:'SafeSport', sports:null},
+  {label:'Code of Conduct', credential:'Code of Conduct', sports:null},
+  {label:'Photo ID', credential:'Photo ID', sports:null},
+  {label:'NAYS Coach Certification', credential:'NAYS Coach Certification', sports:['Football']},
+  {label:'USJF Membership', credential:'USJF Membership', sports:['Judo']},
+  {label:'USA Judo Membership', credential:'USA Judo Membership', sports:['Judo']},
+  {label:'Judo Coaching / Instructor Certification', credential:'Judo Coaching / Instructor Certification', sports:['Judo']},
+  {label:'Little League Abuse Awareness Training', credential:'Little League Abuse Awareness Training', sports:['Baseball']},
 ];
 
 export default function OrganizationManage(){
@@ -93,6 +93,22 @@ export default function OrganizationManage(){
 
   useEffect(()=>{if(orgId) load()},[orgId]);
 
+  useEffect(()=>{
+    if(credentialTypesForOrg.length && !credentialTypesForOrg.some((t:any)=>t.id===customType)){
+      setCustomType(credentialTypesForOrg[0].id);
+    }
+  },[credentialTypesForOrg,customType]);
+
+  const recommendedForOrg=useMemo(()=>{
+    const sport=(org?.sport || '').trim();
+    return RECOMMENDED.filter(item=>!item.sports || item.sports.includes(sport));
+  },[org]);
+
+  const credentialTypesForOrg=useMemo(()=>{
+    const sport=(org?.sport || '').trim();
+    return types.filter((t:any)=>!t.applicable_sports || t.applicable_sports.length===0 || t.applicable_sports.includes(sport));
+  },[types,org]);
+
   const typeByName=useMemo(()=>{
     const m:Record<string,any>={};
     types.forEach(t=>m[t.name]=t);
@@ -129,7 +145,7 @@ export default function OrganizationManage(){
       const roleId=await ensureRole(activeRoleName);
 
       for(const name of selected){
-        const rec=RECOMMENDED.find(x=>x.label===name);
+        const rec=recommendedForOrg.find(x=>x.label===name);
         if(!rec) continue;
 
         const type=typeByName[rec.credential];
@@ -278,7 +294,7 @@ export default function OrganizationManage(){
     <section className="card" style={{marginTop:24}}>
       <h2>2. Select requirements</h2>
       <div className="list" style={{marginTop:12}}>
-        {RECOMMENDED.map(r=>(
+        {recommendedForOrg.map(r=>(
           <label className="item" key={r.label} style={{cursor:'pointer'}}>
             <strong>{r.label}</strong>
             <input
@@ -311,7 +327,7 @@ export default function OrganizationManage(){
         <div className="field">
           <label>Accepted credential type</label>
           <select value={customType} onChange={e=>setCustomType(e.target.value)}>
-            {types.map(t=><option value={t.id} key={t.id}>{t.name}</option>)}
+            {credentialTypesForOrg.map(t=><option value={t.id} key={t.id}>{t.name}</option>)}
           </select>
         </div>
         <div className="field">
