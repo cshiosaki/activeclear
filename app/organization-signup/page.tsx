@@ -57,9 +57,9 @@ export default function OrganizationSignup(){
 
   const [form,setForm]=useState({
     name:'',
-    organization_type:'Dojo / Martial Arts School',
-    sport:'Judo',
-    governing_body:'USJF / USA Judo',
+    organization_type:'',
+    sport:'',
+    governing_body:'',
     description:'',
     admin_title:'',
     contact_name:'',
@@ -78,7 +78,7 @@ export default function OrganizationSignup(){
 
   async function load(userId:string){
     const [{data:o},{data:r}] = await Promise.all([
-      supabase.from('organizations').select('*').eq('is_active',true).order('name'),
+      supabase.rpc('list_active_organization_directory'),
       supabase.from('organization_claim_requests')
         .select('*,organizations(name,sport,governing_body)')
         .eq('user_id',userId)
@@ -94,14 +94,12 @@ export default function OrganizationSignup(){
       const {data:{user}}=await supabase.auth.getUser();
       if(!user){router.replace('/login');return;}
       setUid(user.id);
-      setForm(current=>({...current,contact_email:user.email || ''}));
       await load(user.id);
     })();
   },[router]);
 
   function setSport(sport:string){
-    const options=GOVERNING_BODIES[sport] || ['None / Local','Other'];
-    setForm({...form,sport,governing_body:options[0]});
+    setForm({...form,sport,governing_body:''});
   }
 
   async function createOrganization(e:FormEvent){
@@ -160,7 +158,7 @@ export default function OrganizationSignup(){
     setBusy(false);
   }
 
-  const governingOptions=GOVERNING_BODIES[form.sport] || ['None / Local','Other'];
+  const governingOptions=form.sport ? (GOVERNING_BODIES[form.sport] || ['None / Local','Other']) : [];
 
   return <AppShell>
     <div className="eyebrow">Organization onboarding</div>
@@ -215,23 +213,26 @@ export default function OrganizationSignup(){
           <div className="row">
             <div className="field">
               <label>Organization type</label>
-              <select value={form.organization_type} onChange={e=>setForm({...form,organization_type:e.target.value})}>
-                {ORG_TYPES.map(x=><option key={x}>{x}</option>)}
+              <select required value={form.organization_type} onChange={e=>setForm({...form,organization_type:e.target.value})}>
+                <option value="">Select organization type</option>
+                {ORG_TYPES.map(x=><option key={x} value={x}>{x}</option>)}
               </select>
             </div>
 
             <div className="field">
               <label>Primary sport / activity</label>
-              <select value={form.sport} onChange={e=>setSport(e.target.value)}>
-                {SPORTS.map(x=><option key={x}>{x}</option>)}
+              <select required value={form.sport} onChange={e=>setSport(e.target.value)}>
+                <option value="">Select sport / activity</option>
+                {SPORTS.map(x=><option key={x} value={x}>{x}</option>)}
               </select>
             </div>
           </div>
 
           <div className="field">
             <label>Governing body / affiliation</label>
-            <select value={form.governing_body} onChange={e=>setForm({...form,governing_body:e.target.value})}>
-              {governingOptions.map(x=><option key={x}>{x}</option>)}
+            <select disabled={!form.sport} value={form.governing_body} onChange={e=>setForm({...form,governing_body:e.target.value})}>
+              <option value="">{form.sport ? 'Select governing body / affiliation' : 'Select sport first'}</option>
+              {governingOptions.map(x=><option key={x} value={x}>{x}</option>)}
             </select>
           </div>
 
