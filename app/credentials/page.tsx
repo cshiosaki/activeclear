@@ -25,18 +25,25 @@ export default function Credentials() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [existingDocumentPath, setExistingDocumentPath] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [reviews, setReviews] = useState<any[]>([]);
+  const [reviewingId, setReviewingId] = useState<string | null>(null);
 
   async function load() {
-    const [{ data: t }, { data: c }] = await Promise.all([
+    const [{ data: t }, { data: c }, { data: r }] = await Promise.all([
       supabase.from('credential_types').select('*').order('name'),
       supabase
         .from('credentials')
         .select('*,credential_types(name,renewal_url)')
         .order('created_at', { ascending: false }),
+      supabase
+        .from('credential_requirement_reviews')
+        .select('*,organization_requirements(name),organizations(name)')
+        .order('reviewed_at', { ascending: false }),
     ]);
 
     setTypes(t || []);
     setItems(c || []);
+    setReviews(r || []);
 
     if (!form.credential_type_id && t?.[0]) {
       setForm((current: any) => ({ ...current, credential_type_id: t[0].id }));
@@ -132,17 +139,20 @@ export default function Credentials() {
     };
 
     let error: any = null;
+    let savedCredentialId: string | null = editingId;
 
     if (editingId) {
-      const result = await supabase.from('credentials').update(payload).eq('id', editingId);
+      const result = await supabase.from('credentials').update(payload).eq('id', editingId).select('id').single();
       error = result.error;
+      savedCredentialId = result.data?.id || editingId;
 
       if (!error && form.file && existingDocumentPath && existingDocumentPath !== documentPath) {
         await supabase.storage.from('credential-documents').remove([existingDocumentPath]);
       }
     } else {
-      const result = await supabase.from('credentials').insert(payload);
+      const result = await supabase.from('credentials').insert(payload).select('id').single();
       error = result.error;
+      savedCredentialId = result.data?.id || null;
     }
 
     if (error) {
@@ -163,6 +173,38 @@ export default function Credentials() {
     });
     await load();
     setBusy(false);
+
+    if (savedCredentialId && documentPath) {
+      await runAIReview(savedCredentialId);
+    }
+  }
+
+  async function runAIReview(credentialId: string) {
+    setReviewingId(credentialId);
+    setMsg('');
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+
+    if (!token) {
+      setMsg('Please sign in again before running AI review.');
+      setReviewingId(null);
+      return;
+    }
+
+    const res = await fetch('/api/ai-review', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ credentialId }),
+    });
+
+    const body = await res.json().catch(() => ({}));
+    setMsg(res.ok ? (body.message || 'AI review complete.') : (body.error || 'AI review failed.'));
+    await load();
+    setReviewingId(null);
   }
 
   async function deleteCredential(item: any) {
@@ -207,7 +249,7 @@ export default function Credentials() {
               <p className="muted">No credentials uploaded yet.</p>
             ) : (
               items.map((item) => (
-                <div className="item" key={item.id}>
+                <div className="item" key={item.id} style={{alignItems:'flex-start'}}>
                   <div>
                     <strong>{item.credential_types?.name}</strong>
                     <div className="muted">
@@ -216,19 +258,39 @@ export default function Credentials() {
                     {item.issuing_body && <div className="muted">{item.issuing_body}</div>}
                   </div>
 
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    <button className="btn secondary" type="button" onClick={() => startEdit(item)}>
-                      Edit
-                    </button>
-                    <button
-                      className="btn"
-                      type="button"
-                      disabled={busy}
-                      onClick={() => deleteCredential(item)}
-                      style={{ background: '#fde7e7', color: '#9a2626' }}
-                    >
-                      Delete
-                    </button>
+                  <div style={{ display: 'grid', gap: 8, justifyItems: 'end' }}>
+                    {(() => {
+                      const itemReviews = reviews.filter((r:any) => r.credential_id === item.id);
+                      if (!itemReviews.length) return item.document_path ? <span className="status amber">AI review pending</span> : null;
+                      const flagged = itemReviews.some((r:any) => r.result !== 'meets_requirement');
+                      return <span className={'status ' + (flagged ? 'red' : 'green')}>
+                        {flagged ? 'AI flagged' : 'AI meets requirements'}
+                      </span>;
+                    })()}
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      {item.document_path && (
+                        <button
+                          className="btn secondary"
+                          type="button"
+                          disabled={reviewingId === item.id}
+                          onClick={() => runAIReview(item.id)}
+                        >
+                          {reviewingId === item.id ? 'Reviewing…' : 'Run AI Review'}
+                        </button>
+                      )}
+                      <button className="btn secondary" type="button" onClick={() => startEdit(item)}>
+                        Edit
+                      </button>
+                      <button
+                        className="btn"
+                        type="button"
+                        disabled={busy}
+                        onClick={() => deleteCredential(item)}
+                        style={{ background: '#fde7e7', color: '#9a2626' }}
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))
