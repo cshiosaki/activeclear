@@ -44,6 +44,10 @@ export default function OrganizationManage(){
   const [customName,setCustomName]=useState('');
   const [customType,setCustomType]=useState('');
   const [customDescription,setCustomDescription]=useState('');
+  const [customWebsite,setCustomWebsite]=useState('');
+  const [customIssuer,setCustomIssuer]=useState('');
+  const [customAiNotes,setCustomAiNotes]=useState('');
+  const [customSample,setCustomSample]=useState<File|null>(null);
   const [msg,setMsg]=useState('');
   const [busy,setBusy]=useState(false);
 
@@ -183,14 +187,29 @@ export default function OrganizationManage(){
     setBusy(true);
     setMsg('');
 
+    let samplePath:string|null=null;
+
     try{
       const roleId=await ensureRole(activeRoleName);
+
+      if(customSample){
+        const safe=customSample.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+        samplePath=`${orgId}/${crypto.randomUUID()}-${safe}`;
+        const {error:uploadError}=await supabase.storage
+          .from('requirement-samples')
+          .upload(samplePath,customSample);
+        if(uploadError) throw uploadError;
+      }
 
       const {data:req,error}=await supabase.from('organization_requirements')
         .insert({
           organization_id:orgId,
           name:customName.trim(),
           description:customDescription.trim() || null,
+          official_url:customWebsite.trim() || null,
+          accepted_issuer:customIssuer.trim() || null,
+          ai_review_notes:customAiNotes.trim() || null,
+          sample_document_path:samplePath,
           requirement_status:'required',
           active:true
         })
@@ -209,58 +228,19 @@ export default function OrganizationManage(){
 
       setCustomName('');
       setCustomDescription('');
+      setCustomWebsite('');
+      setCustomIssuer('');
+      setCustomAiNotes('');
+      setCustomSample(null);
       setMsg(`Custom requirement added for ${activeRoleName}.`);
       await load();
     }catch(error:any){
+      if(samplePath){
+        await supabase.storage.from('requirement-samples').remove([samplePath]);
+      }
       setMsg(error?.message || 'Could not add custom requirement.');
     }
 
-    setBusy(false);
-  }
-
-  async function editRole(role:any){
-    const nextName=window.prompt('Edit role name', role.name);
-    if(nextName===null) return;
-    const name=nextName.trim();
-    if(!name || name===role.name) return;
-
-    setBusy(true);
-    setMsg('');
-    const {error}=await supabase.from('organization_roles')
-      .update({name})
-      .eq('id',role.id)
-      .eq('organization_id',orgId);
-
-    if(error){
-      setMsg(error.message);
-    }else{
-      setMsg('Role updated.');
-      if(activeRoleName===role.name) setActiveRoleName(name);
-      await load();
-    }
-    setBusy(false);
-  }
-
-  async function deleteRole(role:any){
-    const ok=window.confirm(
-      `Delete "${role.name}"? This will remove its requirement assignments. Existing people using this role will need to choose a role again.`
-    );
-    if(!ok) return;
-
-    setBusy(true);
-    setMsg('');
-    const {error}=await supabase.from('organization_roles')
-      .delete()
-      .eq('id',role.id)
-      .eq('organization_id',orgId);
-
-    if(error){
-      setMsg(error.message);
-    }else{
-      setMsg('Role deleted.');
-      if(activeRoleName===role.name) setActiveRoleName('');
-      await load();
-    }
     setBusy(false);
   }
 
@@ -337,6 +317,40 @@ export default function OrganizationManage(){
         <div className="field">
           <label>Instructions / description</label>
           <textarea placeholder="Describe what the participant must provide." value={customDescription} onChange={e=>setCustomDescription(e.target.value)}/>
+        </div>
+        <div className="field">
+          <label>Official website / renewal link</label>
+          <input
+            type="url"
+            placeholder="https://..."
+            value={customWebsite}
+            onChange={e=>setCustomWebsite(e.target.value)}
+          />
+        </div>
+        <div className="field">
+          <label>Accepted issuer (optional)</label>
+          <input
+            placeholder="Example: American Red Cross"
+            value={customIssuer}
+            onChange={e=>setCustomIssuer(e.target.value)}
+          />
+        </div>
+        <div className="field">
+          <label>Sample acceptable certification (optional)</label>
+          <input
+            type="file"
+            accept=".pdf,.png,.jpg,.jpeg,.webp"
+            onChange={e=>setCustomSample(e.target.files?.[0] || null)}
+          />
+          <small className="muted">Used as a reference example for AI review.</small>
+        </div>
+        <div className="field">
+          <label>AI review notes (optional)</label>
+          <textarea
+            placeholder="Example: Must show participant name, current expiration date, and CPR/AED from an approved provider."
+            value={customAiNotes}
+            onChange={e=>setCustomAiNotes(e.target.value)}
+          />
         </div>
         <button className="btn green" disabled={busy || !activeRoleName}>Add custom requirement</button>
       </form>
