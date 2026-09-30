@@ -268,7 +268,16 @@ export default function Credentials() {
                         <span className={'status ' + cls}>{label}</span>
                         {isFail && top?.reasons?.length>0 && (
                           <div className="muted" style={{maxWidth:260,textAlign:'right',fontSize:13,lineHeight:1.35}}>
-                            {top.reasons.join(' ')}
+                            {(() => {
+                              const text=top.reasons.join(' ').toLowerCase();
+                              if(text.includes('expired') || text.includes('completion date') || text.includes('current through') || text.includes('annual training')) return 'Expired';
+                              if(text.includes('wrong credential') || text.includes('does not match') || text.includes('credential type')) return 'Wrong credential';
+                              if(text.includes('unreadable') || text.includes('cannot read') || text.includes('not legible')) return 'Unreadable';
+                              if(text.includes('name') && text.includes('match')) return 'Name does not match';
+                              if(text.includes('issuer') || text.includes('provider')) return 'Unapproved provider';
+                              if(text.includes('expiration') || text.includes('valid-through')) return 'Expiration could not be verified';
+                              return top.reasons[0];
+                            })()}
                           </div>
                         )}
                       </>;
