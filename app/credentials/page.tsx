@@ -26,9 +26,10 @@ export default function Credentials() {
   const [existingDocumentPath, setExistingDocumentPath] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [reviews, setReviews] = useState<any[]>([]);
+  const [overrideRequests, setOverrideRequests] = useState<any[]>([]);
 
   async function load() {
-    const [{ data: t }, { data: c }, { data: r }] = await Promise.all([
+    const [{ data: t }, { data: c }, { data: r }, { data: ovr }] = await Promise.all([
       supabase.from('credential_types').select('*').order('name'),
       supabase
         .from('credentials')
@@ -36,13 +37,18 @@ export default function Credentials() {
         .order('created_at', { ascending: false }),
       supabase
         .from('credential_requirement_reviews')
-        .select('credential_id,result,reasons,reviewed_at')
+        .select('credential_id,requirement_id,organization_id,result,reasons,reviewed_at')
         .order('reviewed_at', { ascending: false }),
+      supabase
+        .from('credential_override_requests')
+        .select('id,credential_id,requirement_id,organization_id,status,request_reason,requested_at')
+        .order('requested_at', { ascending: false }),
     ]);
 
     setTypes(t || []);
     setItems(c || []);
     setReviews(r || []);
+    setOverrideRequests(ovr || []);
 
     if (!form.credential_type_id && t?.[0]) {
       setForm((current: any) => ({ ...current, credential_type_id: t[0].id }));
@@ -193,6 +199,39 @@ export default function Credentials() {
     }).catch(() => null);
   }
 
+  async function requestOverride(item:any, review:any){
+    const existing=overrideRequests.find((x:any)=>
+      x.credential_id===item.id &&
+      x.requirement_id===review?.requirement_id &&
+      x.organization_id===review?.organization_id &&
+      x.status==='pending'
+    );
+    if(existing){
+      setMsg('Override review already requested.');
+      return;
+    }
+
+    const reason=window.prompt('Tell the organization why this credential should be reviewed.');
+    if(reason===null) return;
+
+    const {error}=await supabase.from('credential_override_requests').insert({
+      credential_id:item.id,
+      user_id:uid,
+      organization_id:review?.organization_id || null,
+      requirement_id:review?.requirement_id || null,
+      request_reason:reason.trim() || null,
+      status:'pending'
+    });
+
+    if(error){
+      setMsg(error.message);
+      return;
+    }
+
+    setMsg('Override review requested.');
+    await load();
+  }
+
   async function deleteCredential(item: any) {
     const ok = window.confirm(
       `Delete ${item.credential_types?.name || 'this credential'}? This cannot be undone.`
@@ -279,6 +318,15 @@ export default function Credentials() {
                               return top.reasons[0];
                             })()}
                           </div>
+                        )}
+                        {isFail && top && (
+                          <button
+                            className="btn secondary"
+                            type="button"
+                            onClick={()=>requestOverride(item,top)}
+                          >
+                            Request review
+                          </button>
                         )}
                       </>;
                     })()}
