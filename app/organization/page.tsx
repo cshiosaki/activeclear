@@ -66,7 +66,9 @@ export default function OrganizationPortal(){
             <h2>{org?.name}</h2>
             <p className="muted">{[org?.sport,org?.governing_body].filter(Boolean).join(' · ')}</p>
             <span className="status green">Admin access active</span>
-            <p style={{marginTop:18}}>The full organization roster and compliance dashboard is the next build step.</p>
+            <div style={{marginTop:18}}>
+              <a className="btn green" href={`/organization-manage?org=${a.organization_id}`}>Manage organization</a>
+            </div>
           </section>
         })}
       </div>
