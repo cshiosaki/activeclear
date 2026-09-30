@@ -12,6 +12,7 @@ type Requirement = {
   season:string|null;
   requirement_status:string;
   requirement_credential_types:Array<{credential_type_id:string}>;
+  requirement_roles?:Array<{role_id:string}>;
 };
 
 export default function Organizations(){
@@ -20,23 +21,33 @@ export default function Organizations(){
   const [orgs,setOrgs]=useState<any[]>([]);
   const [memberships,setMemberships]=useState<any[]>([]);
   const [requirements,setRequirements]=useState<Record<string,Requirement[]>>({});
+  const [roles,setRoles]=useState<Record<string,any[]>>({});
+  const [selectedRole,setSelectedRole]=useState<Record<string,string>>({});
   const [credentials,setCredentials]=useState<any[]>([]);
   const [openOrg,setOpenOrg]=useState<string|null>(null);
 
   async function load(id:string){
-    const [{data:o},{data:m},{data:c},{data:r}] = await Promise.all([
+    const [{data:o},{data:m},{data:c},{data:r},{data:roleData}] = await Promise.all([
       supabase.from('organizations').select('*').eq('is_active',true).order('name'),
       supabase.from('organization_memberships').select('*').eq('user_id',id).eq('status','active'),
       supabase.from('credentials').select('id,credential_type_id,expires_date,status'),
       supabase.from('organization_requirements')
-        .select('id,organization_id,name,description,season,requirement_status,requirement_credential_types(credential_type_id)')
+        .select('id,organization_id,name,description,season,requirement_status,requirement_credential_types(credential_type_id),requirement_roles(role_id)')
         .eq('active',true)
-        .order('name')
+        .order('name'),
+      supabase.from('organization_roles').select('*').eq('is_active',true).order('name')
     ]);
 
     setOrgs(o||[]);
     setMemberships(m||[]);
     setCredentials(c||[]);
+
+    const roleGrouped:Record<string,any[]> = {};
+    (roleData||[]).forEach((role:any)=>{
+      if(!roleGrouped[role.organization_id]) roleGrouped[role.organization_id]=[];
+      roleGrouped[role.organization_id].push(role);
+    });
+    setRoles(roleGrouped);
 
     const grouped:Record<string,Requirement[]> = {};
     (r||[]).forEach((req:any)=>{
@@ -56,10 +67,13 @@ export default function Organizations(){
   },[router]);
 
   async function connect(orgId:string){
+    const roleId=selectedRole[orgId] || roles[orgId]?.[0]?.id || null;
+    const role=roles[orgId]?.find((x:any)=>x.id===roleId);
     await supabase.from('organization_memberships').insert({
       organization_id:orgId,
       user_id:uid,
-      role:'Coach / Volunteer',
+      role:role?.name || 'Participant',
+      role_id:roleId,
       status:'active'
     });
     await load(uid);
@@ -101,7 +115,13 @@ export default function Organizations(){
     <div className="list" style={{marginTop:24}}>
       {orgs.map(o=>{
         const m=memberships.find(x=>x.organization_id===o.id);
-        const reqs=requirements[o.id]||[];
+        const allReqs=requirements[o.id]||[];
+        const reqs=m?.role_id
+          ? allReqs.filter((r:any)=>{
+              const assigned=r.requirement_roles||[];
+              return assigned.length===0 || assigned.some((x:any)=>x.role_id===m.role_id);
+            })
+          : allReqs;
         const summary=summaries[o.id]||{met:0,total:0,complete:false};
         const isOpen=openOrg===o.id;
 
@@ -110,6 +130,7 @@ export default function Organizations(){
             <div>
               <strong>{o.name}</strong>
               <div className="muted">{o.sport||'Program'}{o.governing_body?' · '+o.governing_body:''}</div>
+              {m && <div className="muted">Role: {m.role || 'Not selected'}</div>}
               {m && summary.total>0 && (
                 <div style={{marginTop:8}}>
                   <span className={'status '+(summary.complete?'green':'amber')}>
@@ -124,6 +145,15 @@ export default function Organizations(){
                 <button className="btn secondary" onClick={()=>setOpenOrg(isOpen?null:o.id)}>
                   {isOpen?'Hide requirements':'View requirements'}
                 </button>
+              )}
+              {!m && (roles[o.id]||[]).length>0 && (
+                <select
+                  value={selectedRole[o.id] || roles[o.id][0]?.id || ''}
+                  onChange={e=>setSelectedRole({...selectedRole,[o.id]:e.target.value})}
+                  style={{minWidth:180}}
+                >
+                  {(roles[o.id]||[]).map((role:any)=><option key={role.id} value={role.id}>{role.name}</option>)}
+                </select>
               )}
               {m
                 ? <button className="btn secondary" onClick={()=>disconnect(m.id)}>Disconnect</button>
