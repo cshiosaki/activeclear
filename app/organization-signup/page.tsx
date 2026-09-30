@@ -60,6 +60,8 @@ export default function OrganizationSignup(){
     organization_type:'Dojo / Martial Arts School',
     sport:'Judo',
     governing_body:'USJF / USA Judo',
+    description:'',
+    admin_title:'',
     contact_name:'',
     contact_email:'',
     contact_phone:'',
@@ -114,6 +116,8 @@ export default function OrganizationSignup(){
       p_sport:form.sport || null,
       p_governing_body:form.governing_body || null,
       p_organization_type:form.organization_type || 'Club',
+      p_description:form.description || null,
+      p_admin_title:form.admin_title || null,
       p_contact_name:form.contact_name || null,
       p_contact_email:form.contact_email || null,
       p_contact_phone:form.contact_phone || null,
@@ -188,6 +192,26 @@ export default function OrganizationSignup(){
             />
           </div>
 
+          <div className="field">
+            <label>Your role with this organization</label>
+            <input
+              required
+              placeholder="Example: Board Member, President, Compliance Administrator"
+              value={form.admin_title}
+              onChange={e=>setForm({...form,admin_title:e.target.value})}
+            />
+          </div>
+
+          <div className="field">
+            <label>What does the organization do?</label>
+            <textarea
+              required
+              placeholder="Describe the organization, who it serves, and the activities or sports it provides."
+              value={form.description}
+              onChange={e=>setForm({...form,description:e.target.value})}
+            />
+          </div>
+
           <div className="row">
             <div className="field">
               <label>Organization type</label>
@@ -197,7 +221,7 @@ export default function OrganizationSignup(){
             </div>
 
             <div className="field">
-              <label>Sport / activity</label>
+              <label>Primary sport / activity</label>
               <select value={form.sport} onChange={e=>setSport(e.target.value)}>
                 {SPORTS.map(x=><option key={x}>{x}</option>)}
               </select>
@@ -211,7 +235,7 @@ export default function OrganizationSignup(){
             </select>
           </div>
 
-          <h3>Primary contact</h3>
+          <h3>Organization contact information</h3>
           <div className="row">
             <div className="field">
               <label>Contact name</label>
