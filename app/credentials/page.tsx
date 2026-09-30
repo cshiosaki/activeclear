@@ -325,7 +325,7 @@ export default function Credentials() {
                             type="button"
                             onClick={()=>requestExemption(item,top)}
                           >
-                            Request review
+                            Request exemption
                           </button>
                         )}
                       </>;
