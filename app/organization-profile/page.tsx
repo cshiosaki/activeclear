@@ -11,6 +11,7 @@ export default function OrganizationProfile(){
   const [form,setForm]=useState<any>(null);
   const [msg,setMsg]=useState('');
   const [busy,setBusy]=useState(false);
+  const [reminders,setReminders]=useState<any>(null);
 
   useEffect(()=>setOrgId(new URLSearchParams(window.location.search).get('org')||''),[]);
 
@@ -23,8 +24,12 @@ export default function OrganizationProfile(){
         .select('organization_id').eq('organization_id',orgId).eq('user_id',user.id).maybeSingle();
       if(!admin){router.replace('/organization');return;}
 
-      const {data:o}=await supabase.from('organizations').select('*').eq('id',orgId).maybeSingle();
+      const [{data:o},{data:reminderSettings}] = await Promise.all([
+        supabase.from('organizations').select('*').eq('id',orgId).maybeSingle(),
+        supabase.from('organization_credential_reminder_settings').select('*').eq('organization_id',orgId).maybeSingle()
+      ]);
       setForm(o);
+      setReminders(reminderSettings || {organization_id:orgId,enabled:true,reminder_days:[90,60,30]});
     })();
   },[orgId,router]);
 
@@ -54,6 +59,20 @@ export default function OrganizationProfile(){
       notify_when_compliant:form.notify_when_compliant ?? true,
       notify_when_noncompliant:form.notify_when_noncompliant ?? true
     }).eq('id',orgId);
+
+    if(!error && reminders){
+      const {error:reminderError}=await supabase.from('organization_credential_reminder_settings')
+        .upsert({
+          organization_id:orgId,
+          enabled:reminders.enabled,
+          reminder_days:reminders.reminder_days
+        },{onConflict:'organization_id'});
+      if(reminderError){
+        setMsg(reminderError.message);
+        setBusy(false);
+        return;
+      }
+    }
 
     setMsg(error?.message || 'Organization profile updated.');
     setBusy(false);
@@ -122,6 +141,39 @@ export default function OrganizationProfile(){
           />
         </label>
       </div>
+
+      <h3>Coach credential reminders</h3>
+      <div className="notice">
+        ActiveClear automatically reminds connected coaches before required credentials expire.
+      </div>
+      <div className="list">
+        {[90,60,30].map(days=>(
+          <label className="item" key={days} style={{cursor:'pointer'}}>
+            <span>{days} days before expiration</span>
+            <input
+              type="checkbox"
+              checked={reminders?.reminder_days?.includes(days) ?? true}
+              onChange={e=>{
+                const current=reminders?.reminder_days || [90,60,30];
+                const next=e.target.checked
+                  ? Array.from(new Set([...current,days])).sort((a:number,b:number)=>b-a)
+                  : current.filter((x:number)=>x!==days);
+                setReminders({...reminders,reminder_days:next});
+              }}
+              style={{width:20,height:20}}
+            />
+          </label>
+        ))}
+      </div>
+      <label className="item" style={{cursor:'pointer',marginTop:8}}>
+        <span>Enable automatic credential reminder emails</span>
+        <input
+          type="checkbox"
+          checked={reminders?.enabled ?? true}
+          onChange={e=>setReminders({...reminders,enabled:e.target.checked})}
+          style={{width:20,height:20}}
+        />
+      </label>
 
       <h3>Address</h3>
       <div className="field"><label>Address</label><input value={form.address_line1||''} onChange={e=>update('address_line1',e.target.value)}/></div>
