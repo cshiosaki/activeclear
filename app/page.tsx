@@ -128,7 +128,7 @@ export default function Home(){
                       </a>
                     ) : (
                       <span className="btn secondary" style={{textAlign:'center',opacity:.55,cursor:'default'}}>
-                        No renewal link yet
+                        No link
                       </span>
                     )}
                   </div>
