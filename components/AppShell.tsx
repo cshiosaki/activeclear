@@ -14,6 +14,7 @@ export default function AppShell({children}:{children:React.ReactNode}){
         <Link href="/profile">Profile</Link>
         <Link href="/credentials">Credentials</Link>
         <Link href="/organizations">Organizations</Link>
+        <Link href="/organization">Organization Portal</Link>
         <button onClick={signOut}>Sign out</button>
       </nav>
     </div>
