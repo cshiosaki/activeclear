@@ -50,11 +50,32 @@ const CODE_OF_CONDUCT_OPTIONS = [
   'Signed acknowledgment required',
 ];
 
+const TERM_OPTIONS = [
+  {value:'6', label:'6 months'},
+  {value:'12', label:'1 year'},
+  {value:'24', label:'2 years'},
+  {value:'36', label:'3 years'},
+  {value:'48', label:'4 years'},
+  {value:'60', label:'5 years'},
+  {value:'lifetime', label:'Lifetime'},
+  {value:'none', label:'No expiration'},
+];
+
+function defaultTerm(label:string){
+  if(label==='Background Check') return '24';
+  if(label==='CPR / AED') return '24';
+  if(label==='Concussion Training') return '12';
+  if(label==='SafeSport') return '12';
+  if(label==='USA Judo Coaching Certification') return '36';
+  if(label.includes('Membership')) return '12';
+  return '12';
+}
+
 const RECOMMENDED = [
   {label:'Background Check', credential:'Background Check', sports:null, governingBodies:null},
   {label:'CPR / AED', credential:'CPR / AED', sports:null, governingBodies:null},
   {label:'Concussion Training', credential:'Concussion Training', sports:null, governingBodies:null},
-  {label:'SafeSport — Yearly Renewal', credential:'SafeSport', sports:null, governingBodies:null},
+  {label:'SafeSport', credential:'SafeSport', sports:null, governingBodies:null},
   {label:'Code of Conduct', credential:'Code of Conduct', sports:null, governingBodies:null},
   {label:'Photo ID', credential:'Photo ID', sports:null, governingBodies:null},
   {label:'NAYS Coach Certification', credential:'NAYS Coach Certification', sports:['Football'], governingBodies:['TYSA']},
@@ -84,6 +105,7 @@ export default function OrganizationManage(){
   const [safeSportSources,setSafeSportSources]=useState<string[]>([]);
   const [otherSafeSportSource,setOtherSafeSportSource]=useState('');
   const [codeOfConductOptions,setCodeOfConductOptions]=useState<string[]>([]);
+  const [renewalTerms,setRenewalTerms]=useState<Record<string,string>>({});
   const [codeOfConductUrl,setCodeOfConductUrl]=useState('');
   const [codeOfConductFile,setCodeOfConductFile]=useState<File|null>(null);
   const [customName,setCustomName]=useState('');
@@ -278,7 +300,7 @@ export default function OrganizationManage(){
           if(concussionErr) throw concussionErr;
         }
 
-        if(rec.label==='SafeSport — Yearly Renewal'){
+        if(rec.label==='SafeSport'){
           const courses=[
             ...safeSportSources.filter(x=>x!=='Other approved course'),
             ...(safeSportSources.includes('Other approved course') && otherSafeSportSource.trim()
@@ -320,6 +342,15 @@ export default function OrganizationManage(){
           if(conductErr) throw conductErr;
         }
 
+        const term=renewalTerms[rec.label] || defaultTerm(rec.label);
+        const {error:termErr}=await supabase.from('organization_requirements')
+          .update({
+            renewal_months:/^\d+$/.test(term) ? Number(term) : null,
+            renewal_type:term==='lifetime' ? 'lifetime' : term==='none' ? 'none' : 'fixed'
+          })
+          .eq('id',reqId);
+        if(termErr) throw termErr;
+
         const {error:mapErr}=await supabase.from('requirement_credential_types')
           .upsert(
             {requirement_id:reqId,credential_type_id:type.id},
@@ -344,6 +375,7 @@ export default function OrganizationManage(){
       setSafeSportSources([]);
       setOtherSafeSportSource('');
       setCodeOfConductOptions([]);
+      setRenewalTerms({});
       setCodeOfConductUrl('');
       setCodeOfConductFile(null);
       setMsg(`${activeRoleName} added with selected requirements.`);
@@ -512,6 +544,15 @@ export default function OrganizationManage(){
                 checked={selected.includes(r.label)}
                 onChange={e=>{
                   setSelected(e.target.checked?[...selected,r.label]:selected.filter(x=>x!==r.label));
+                  if(e.target.checked && !renewalTerms[r.label]){
+                    setRenewalTerms(current=>({...current,[r.label]:defaultTerm(r.label)}));
+                  }else if(!e.target.checked){
+                    setRenewalTerms(current=>{
+                      const next={...current};
+                      delete next[r.label];
+                      return next;
+                    });
+                  }
                   if(r.label==='Background Check' && !e.target.checked){
                     setBackgroundSources([]);
                     setOtherBackgroundSource('');
@@ -523,7 +564,7 @@ export default function OrganizationManage(){
                     setConcussionSources([]);
                     setOtherConcussionSource('');
                   }
-                  if(r.label==='SafeSport — Yearly Renewal' && !e.target.checked){
+                  if(r.label==='SafeSport' && !e.target.checked){
                     setSafeSportSources([]);
                     setOtherSafeSportSource('');
                   }
@@ -536,6 +577,20 @@ export default function OrganizationManage(){
                 style={{width:20,height:20}}
               />
             </label>
+
+            {selected.includes(r.label) && (
+              <div className="field" style={{margin:'8px 0 14px 24px',maxWidth:260}}>
+                <label>Renewal term</label>
+                <select
+                  value={renewalTerms[r.label] || defaultTerm(r.label)}
+                  onChange={e=>setRenewalTerms({...renewalTerms,[r.label]:e.target.value})}
+                >
+                  {TERM_OPTIONS.map(option=>(
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {r.label==='Background Check' && selected.includes('Background Check') && (
               <div className="card" style={{margin:'8px 0 14px 24px',padding:14}}>
@@ -631,7 +686,7 @@ export default function OrganizationManage(){
               </div>
             )}
 
-            {r.label==='SafeSport — Yearly Renewal' && selected.includes('SafeSport — Yearly Renewal') && (
+            {r.label==='SafeSport' && selected.includes('SafeSport') && (
               <div className="card" style={{margin:'8px 0 14px 24px',padding:14}}>
                 <div style={{fontWeight:700,marginBottom:8}}>Accepted SafeSport / abuse-prevention training</div>
                 <div className="list">
