@@ -30,7 +30,6 @@ const CPR_REQUIREMENTS = [
   'CPR',
   'First Aid',
   'AED',
-  'Provider-certified course',
 ];
 
 const RECOMMENDED = [
@@ -484,6 +483,9 @@ export default function OrganizationManage(){
                       />
                     </label>
                   ))}
+                </div>
+                <div className="muted" style={{marginTop:10}}>
+                  Must be completed through a certified course.
                 </div>
               </div>
             )}
