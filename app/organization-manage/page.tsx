@@ -5,6 +5,19 @@ import { useRouter } from 'next/navigation';
 import AppShell from '@/components/AppShell';
 import { supabase } from '@/lib/supabase';
 
+const RECOMMENDED_ROLES = [
+  'Coach',
+  'Head Coach',
+  'Assistant Coach',
+  'Instructor',
+  'Assistant Instructor',
+  'Volunteer',
+  'Board Member',
+  'Official / Referee',
+  'Team Parent',
+  'Tournament / Event Volunteer',
+];
+
 const RECOMMENDED = [
   {label:'Background Check', credential:'Background Check'},
   {label:'CPR / AED', credential:'CPR / AED'},
@@ -26,6 +39,9 @@ export default function OrganizationManage(){
   const [org,setOrg]=useState<any>(null);
   const [types,setTypes]=useState<any[]>([]);
   const [requirements,setRequirements]=useState<any[]>([]);
+  const [roles,setRoles]=useState<any[]>([]);
+  const [selectedRoles,setSelectedRoles]=useState<string[]>([]);
+  const [customRole,setCustomRole]=useState('');
   const [selected,setSelected]=useState<string[]>([]);
   const [customName,setCustomName]=useState('');
   const [customType,setCustomType]=useState('');
@@ -45,18 +61,24 @@ export default function OrganizationManage(){
       .maybeSingle();
     if(!admin){router.replace('/organization');return;}
 
-    const [{data:o},{data:t},{data:r}] = await Promise.all([
+    const [{data:o},{data:t},{data:r},{data:roleData}] = await Promise.all([
       supabase.from('organizations').select('*').eq('id',orgId).maybeSingle(),
       supabase.from('credential_types').select('*').order('name'),
       supabase.from('organization_requirements')
-        .select('*,requirement_credential_types(credential_type_id)')
+        .select('*,requirement_credential_types(credential_type_id),requirement_roles(role_id)')
         .eq('organization_id',orgId)
         .eq('active',true)
+        .order('name'),
+      supabase.from('organization_roles')
+        .select('*')
+        .eq('organization_id',orgId)
+        .eq('is_active',true)
         .order('name')
     ]);
     setOrg(o);
     setTypes(t||[]);
     setRequirements(r||[]);
+    setRoles(roleData||[]);
     setCustomType(t?.[0]?.id || '');
   }
 
@@ -72,6 +94,52 @@ export default function OrganizationManage(){
     types.forEach(t=>m[t.name]=t);
     return m;
   },[types]);
+
+  async function addRecommendedRoles(){
+    if(!selectedRoles.length) return;
+    setBusy(true); setMsg('');
+    for(const name of selectedRoles){
+      const {error}=await supabase.from('organization_roles')
+        .upsert({organization_id:orgId,name,is_active:true},{onConflict:'organization_id,name'});
+      if(error){setMsg(error.message);setBusy(false);return;}
+    }
+    setSelectedRoles([]);
+    setMsg('Roles added.');
+    await load();
+    setBusy(false);
+  }
+
+  async function addCustomRole(e:FormEvent){
+    e.preventDefault();
+    if(!customRole.trim()) return;
+    setBusy(true); setMsg('');
+    const {error}=await supabase.from('organization_roles')
+      .insert({organization_id:orgId,name:customRole.trim(),is_active:true});
+    setMsg(error?.message || 'Custom role added.');
+    if(!error){setCustomRole('');await load();}
+    setBusy(false);
+  }
+
+  async function removeRole(id:string){
+    if(!window.confirm('Remove this role? Requirement assignments to this role will also be removed.')) return;
+    const {error}=await supabase.from('organization_roles').delete().eq('id',id);
+    if(error)setMsg(error.message); else {setMsg('Role removed.');await load();}
+  }
+
+  async function toggleRequirementRole(requirementId:string, roleId:string, checked:boolean){
+    setBusy(true); setMsg('');
+    if(checked){
+      const {error}=await supabase.from('requirement_roles')
+        .upsert({requirement_id:requirementId,role_id:roleId},{onConflict:'requirement_id,role_id'});
+      if(error){setMsg(error.message);setBusy(false);return;}
+    }else{
+      const {error}=await supabase.from('requirement_roles')
+        .delete().eq('requirement_id',requirementId).eq('role_id',roleId);
+      if(error){setMsg(error.message);setBusy(false);return;}
+    }
+    await load();
+    setBusy(false);
+  }
 
   async function addRecommended(){
     if(!selected.length) return;
@@ -145,8 +213,57 @@ export default function OrganizationManage(){
   return <AppShell>
     <div className="eyebrow">Organization setup</div>
     <h1>{org.name}</h1>
-    <p className="muted">Choose from recommended requirements or add your own.</p>
+    <p className="muted">Set up the roles in your organization, then choose requirements and assign them to the roles that need them.</p>
 
+    <section className="card" style={{marginTop:24}}>
+      <h2>1. Organization roles</h2>
+      <p className="muted">Choose recommended roles or add a custom role.</p>
+
+      <div className="grid two" style={{marginTop:16}}>
+        <div>
+          <h3>Recommended roles</h3>
+          <div className="list">
+            {RECOMMENDED_ROLES.map(role=>(
+              <label className="item" key={role} style={{cursor:'pointer'}}>
+                <strong>{role}</strong>
+                <input
+                  type="checkbox"
+                  checked={selectedRoles.includes(role)}
+                  onChange={e=>setSelectedRoles(e.target.checked?[...selectedRoles,role]:selectedRoles.filter(x=>x!==role))}
+                  style={{width:20,height:20}}
+                />
+              </label>
+            ))}
+          </div>
+          <button className="btn green" style={{marginTop:14}} disabled={busy || selectedRoles.length===0} onClick={addRecommendedRoles}>
+            Add selected roles
+          </button>
+        </div>
+
+        <div>
+          <h3>Other / custom role</h3>
+          <form className="form" onSubmit={addCustomRole}>
+            <div className="field">
+              <label>Role name</label>
+              <input placeholder="Example: Dojo Safety Officer" value={customRole} onChange={e=>setCustomRole(e.target.value)}/>
+            </div>
+            <button className="btn green" disabled={busy}>Add custom role</button>
+          </form>
+
+          <h3 style={{marginTop:24}}>Current roles</h3>
+          {roles.length===0 ? <p className="muted">No roles added yet.</p> :
+            <div className="list">
+              {roles.map(role=><div className="item" key={role.id}>
+                <strong>{role.name}</strong>
+                <button className="btn" type="button" style={{background:'#fde7e7',color:'#9a2626'}} onClick={()=>removeRole(role.id)}>Remove</button>
+              </div>)}
+            </div>
+          }
+        </div>
+      </div>
+    </section>
+
+    <h2 className="section-title">2. Requirements</h2>
     <div className="grid two" style={{marginTop:24}}>
       <section className="card">
         <h2>Recommended requirements</h2>
@@ -205,6 +322,24 @@ export default function OrganizationManage(){
                 <strong>{r.name}</strong>
                 {r.description && <div className="muted">{r.description}</div>}
                 <div className="muted">Accepted: {mapped.join(', ') || 'Not mapped yet'}</div>
+                <div style={{marginTop:10}}>
+                  <div className="muted" style={{fontWeight:700}}>Applies to roles</div>
+                  {roles.length===0 ? <div className="muted">Add roles above first.</div> :
+                    <div style={{display:'flex',gap:12,flexWrap:'wrap',marginTop:6}}>
+                      {roles.map(role=>{
+                        const checked=(r.requirement_roles||[]).some((x:any)=>x.role_id===role.id);
+                        return <label key={role.id} style={{display:'flex',alignItems:'center',gap:5}}>
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={e=>toggleRequirementRole(r.id,role.id,e.target.checked)}
+                          />
+                          {role.name}
+                        </label>
+                      })}
+                    </div>
+                  }
+                </div>
               </div>
               <button className="btn" type="button" style={{background:'#fde7e7',color:'#9a2626'}} onClick={()=>removeRequirement(r.id)}>Remove</button>
             </div>
