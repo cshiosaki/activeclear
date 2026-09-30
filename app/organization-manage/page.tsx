@@ -58,8 +58,9 @@ const RECOMMENDED = [
   {label:'Code of Conduct', credential:'Code of Conduct', sports:null, governingBodies:null},
   {label:'Photo ID', credential:'Photo ID', sports:null, governingBodies:null},
   {label:'NAYS Coach Certification', credential:'NAYS Coach Certification', sports:['Football'], governingBodies:['TYSA']},
-  {label:'USJF Membership', credential:'USJF Membership', sports:['Judo'], governingBodies:['USJF','USA Judo']},
-  {label:'USA Judo Membership', credential:'USA Judo Membership', sports:['Judo'], governingBodies:['USJF','USA Judo']},
+  {label:'USJF Membership', credential:'USJF Membership', sports:['Judo'], governingBodies:['USJF']},
+  {label:'USJA Membership', credential:'USJA Membership', sports:['Judo'], governingBodies:['USJA']},
+  {label:'USA Judo Membership', credential:'USA Judo Membership', sports:['Judo'], governingBodies:['USA Judo']},
   {label:'Judo Coaching / Instructor Certification', credential:'Judo Coaching / Instructor Certification', sports:['Judo'], governingBodies:['USJF','USA Judo']},
   {label:'Little League Abuse Awareness Training', credential:'Little League Abuse Awareness Training', sports:['Baseball'], governingBodies:['Little League']},
 ];
