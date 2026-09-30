@@ -293,7 +293,7 @@ export default function Credentials() {
                           disabled={reviewingId === item.id}
                           onClick={() => runAIReview(item.id)}
                         >
-                          {reviewingId === item.id ? 'Reviewing…' : 'Run AI Review'}
+                          {reviewingId === item.id ? 'Reviewing…' : 'Review'}
                         </button>
                       )}
                       <button className="btn secondary" type="button" onClick={() => startEdit(item)}>
