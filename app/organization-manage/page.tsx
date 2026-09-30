@@ -81,6 +81,8 @@ export default function OrganizationManage(){
   const [safeSportSources,setSafeSportSources]=useState<string[]>([]);
   const [otherSafeSportSource,setOtherSafeSportSource]=useState('');
   const [codeOfConductOptions,setCodeOfConductOptions]=useState<string[]>([]);
+  const [codeOfConductUrl,setCodeOfConductUrl]=useState('');
+  const [codeOfConductFile,setCodeOfConductFile]=useState<File|null>(null);
   const [customName,setCustomName]=useState('');
   const [customType,setCustomType]=useState('');
   const [customDescription,setCustomDescription]=useState('');
@@ -291,11 +293,25 @@ export default function OrganizationManage(){
         }
 
         if(rec.label==='Code of Conduct'){
+          let documentPath:string|null=existing?.source_document_path || null;
+
+          if(codeOfConductFile){
+            const safe=codeOfConductFile.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+            documentPath=`${orgId}/${reqId}/${crypto.randomUUID()}-${safe}`;
+            const {error:docError}=await supabase.storage
+              .from('requirement-documents')
+              .upload(documentPath,codeOfConductFile);
+            if(docError) throw docError;
+          }
+
           const {error:conductErr}=await supabase.from('organization_requirements')
             .update({
               validation_rules:{
                 code_of_conduct_options:codeOfConductOptions
-              }
+              },
+              source_document_url:codeOfConductUrl.trim() || null,
+              source_document_path:documentPath,
+              requires_acknowledgment:codeOfConductOptions.includes('Signed acknowledgment required')
             })
             .eq('id',reqId);
           if(conductErr) throw conductErr;
@@ -325,6 +341,8 @@ export default function OrganizationManage(){
       setSafeSportSources([]);
       setOtherSafeSportSource('');
       setCodeOfConductOptions([]);
+      setCodeOfConductUrl('');
+      setCodeOfConductFile(null);
       setMsg(`${activeRoleName} added with selected requirements.`);
       await load();
     }catch(error:any){
@@ -508,6 +526,8 @@ export default function OrganizationManage(){
                   }
                   if(r.label==='Code of Conduct' && !e.target.checked){
                     setCodeOfConductOptions([]);
+                    setCodeOfConductUrl('');
+                    setCodeOfConductFile(null);
                   }
                 }}
                 style={{width:20,height:20}}
@@ -661,6 +681,26 @@ export default function OrganizationManage(){
                       />
                     </label>
                   ))}
+                </div>
+
+                <div className="field" style={{marginTop:12}}>
+                  <label>Code of Conduct link (optional)</label>
+                  <input
+                    type="url"
+                    placeholder="https://..."
+                    value={codeOfConductUrl}
+                    onChange={e=>setCodeOfConductUrl(e.target.value)}
+                  />
+                </div>
+
+                <div className="field">
+                  <label>Upload Code of Conduct (optional)</label>
+                  <input
+                    type="file"
+                    accept=".pdf,.png,.jpg,.jpeg,.webp"
+                    onChange={e=>setCodeOfConductFile(e.target.files?.[0] || null)}
+                  />
+                  <small className="muted">Participants will be able to open this document before acknowledging it.</small>
                 </div>
               </div>
             )}
