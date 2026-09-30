@@ -1,7 +1,7 @@
 'use client';
 
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import AppShell from '@/components/AppShell';
 import { supabase } from '@/lib/supabase';
 
@@ -21,8 +21,7 @@ const RECOMMENDED = [
 
 export default function OrganizationManage(){
   const router=useRouter();
-  const params=useSearchParams();
-  const orgId=params.get('org') || '';
+  const [orgId,setOrgId]=useState('');
 
   const [org,setOrg]=useState<any>(null);
   const [types,setTypes]=useState<any[]>([]);
@@ -61,7 +60,12 @@ export default function OrganizationManage(){
     setCustomType(t?.[0]?.id || '');
   }
 
-  useEffect(()=>{load()},[orgId]);
+  useEffect(()=>{
+    const id=new URLSearchParams(window.location.search).get('org') || '';
+    setOrgId(id);
+  },[]);
+
+  useEffect(()=>{if(orgId) load()},[orgId]);
 
   const typeByName=useMemo(()=>{
     const m:Record<string,any>={};
