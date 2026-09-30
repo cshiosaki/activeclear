@@ -13,6 +13,7 @@ export default function OrganizationDashboard(){
   const [admins,setAdmins]=useState<any[]>([]);
   const [members,setMembers]=useState<any[]>([]);
   const [requirements,setRequirements]=useState<any[]>([]);
+  const [compliance,setCompliance]=useState({total_users:0,compliant_users:0,noncompliant_users:0});
   const [loading,setLoading]=useState(true);
 
   useEffect(()=>{
@@ -33,12 +34,13 @@ export default function OrganizationDashboard(){
 
       if(!admin){router.replace('/organization');return;}
 
-      const [{data:o},{data:r},{data:a},{data:m},{data:reqs}] = await Promise.all([
+      const [{data:o},{data:r},{data:a},{data:m},{data:reqs},{data:summary}] = await Promise.all([
         supabase.from('organizations').select('*').eq('id',orgId).maybeSingle(),
         supabase.from('organization_roles').select('*').eq('organization_id',orgId).eq('is_active',true).order('name'),
         supabase.from('organization_admins').select('user_id,role,title').eq('organization_id',orgId),
         supabase.from('organization_memberships').select('id,user_id,role,status').eq('organization_id',orgId).eq('status','active'),
-        supabase.from('organization_requirements').select('id').eq('organization_id',orgId).eq('active',true)
+        supabase.from('organization_requirements').select('id').eq('organization_id',orgId).eq('active',true),
+        supabase.rpc('get_organization_compliance_summary',{p_organization_id:orgId})
       ]);
 
       setOrg(o);
@@ -46,6 +48,7 @@ export default function OrganizationDashboard(){
       setAdmins(a||[]);
       setMembers(m||[]);
       setRequirements(reqs||[]);
+      setCompliance(summary?.[0] || {total_users:0,compliant_users:0,noncompliant_users:0});
       setLoading(false);
     })();
   },[orgId,router]);
@@ -81,6 +84,27 @@ export default function OrganizationDashboard(){
         <a className="btn green" href={`/organization-manage?org=${orgId}`}>Manage roles & requirements</a>
       </section>
     </div>
+
+    <section className="card" style={{marginTop:24}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12}}>
+        <h2 style={{margin:0}}>Compliance</h2>
+        <a className="btn secondary" href={`/organization-users?org=${orgId}`}>View users</a>
+      </div>
+      <div className="grid three" style={{marginTop:16}}>
+        <div>
+          <div className="muted">Users</div>
+          <div className="metric">{compliance.total_users}</div>
+        </div>
+        <div>
+          <div className="muted">Compliant</div>
+          <div className="metric">{compliance.compliant_users}</div>
+        </div>
+        <div>
+          <div className="muted">Non-compliant</div>
+          <div className="metric">{compliance.noncompliant_users}</div>
+        </div>
+      </div>
+    </section>
 
     <section className="card" style={{marginTop:24}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12}}>
