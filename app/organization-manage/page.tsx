@@ -61,7 +61,8 @@ const RECOMMENDED = [
   {label:'USJF Membership', credential:'USJF Membership', sports:['Judo'], governingBodies:['USJF']},
   {label:'USJA Membership', credential:'USJA Membership', sports:['Judo'], governingBodies:['USJA']},
   {label:'USA Judo Membership', credential:'USA Judo Membership', sports:['Judo'], governingBodies:['USA Judo']},
-  {label:'Judo Coaching / Instructor Certification', credential:'Judo Coaching / Instructor Certification', sports:['Judo'], governingBodies:['USJF','USJA']},
+  {label:'USJF Coaching / Instructor Certification', credential:'USJF Coaching / Instructor Certification', sports:['Judo'], governingBodies:['USJF']},
+  {label:'USJA Coaching / Instructor Certification', credential:'USJA Coaching / Instructor Certification', sports:['Judo'], governingBodies:['USJA']},
   {label:'USA Judo Coaching Certification', credential:'USA Judo Coaching Certification', sports:['Judo'], governingBodies:['USA Judo']},
   {label:'Little League Abuse Awareness Training', credential:'Little League Abuse Awareness Training', sports:['Baseball'], governingBodies:['Little League']},
 ];
