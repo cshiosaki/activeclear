@@ -218,6 +218,52 @@ export default function OrganizationManage(){
     setBusy(false);
   }
 
+  async function editRole(role:any){
+    const nextName=window.prompt('Edit role name', role.name);
+    if(nextName===null) return;
+    const name=nextName.trim();
+    if(!name || name===role.name) return;
+
+    setBusy(true);
+    setMsg('');
+    const {error}=await supabase.from('organization_roles')
+      .update({name})
+      .eq('id',role.id)
+      .eq('organization_id',orgId);
+
+    if(error){
+      setMsg(error.message);
+    }else{
+      setMsg('Role updated.');
+      if(activeRoleName===role.name) setActiveRoleName(name);
+      await load();
+    }
+    setBusy(false);
+  }
+
+  async function deleteRole(role:any){
+    const ok=window.confirm(
+      `Delete "${role.name}"? This will remove its requirement assignments. Existing people using this role will need to choose a role again.`
+    );
+    if(!ok) return;
+
+    setBusy(true);
+    setMsg('');
+    const {error}=await supabase.from('organization_roles')
+      .delete()
+      .eq('id',role.id)
+      .eq('organization_id',orgId);
+
+    if(error){
+      setMsg(error.message);
+    }else{
+      setMsg('Role deleted.');
+      if(activeRoleName===role.name) setActiveRoleName('');
+      await load();
+    }
+    setBusy(false);
+  }
+
   async function removeRequirement(id:string){
     if(!window.confirm('Remove this requirement from the organization?'))return;
     const {error}=await supabase.from('organization_requirements').delete().eq('id',id);
@@ -303,8 +349,14 @@ export default function OrganizationManage(){
           {roles.map((role:any)=>{
             const assigned=requirements.filter((r:any)=>(r.requirement_roles||[]).some((x:any)=>x.role_id===role.id));
             return <details className="item" key={role.id} style={{display:'block'}}>
-              <summary style={{cursor:'pointer',fontWeight:700}}>
-                {role.name} <span className="muted">· {assigned.length} requirement{assigned.length===1?'':'s'}</span>
+              <summary style={{cursor:'pointer',fontWeight:700,display:'flex',justifyContent:'space-between',alignItems:'center',gap:12}}>
+                <span>
+                  {role.name} <span className="muted">· {assigned.length} requirement{assigned.length===1?'':'s'}</span>
+                </span>
+                <span style={{display:'flex',gap:8}} onClick={e=>e.preventDefault()}>
+                  <button className="btn secondary" type="button" onClick={()=>editRole(role)}>Edit</button>
+                  <button className="btn" type="button" style={{background:'#fde7e7',color:'#9a2626'}} onClick={()=>deleteRole(role)}>Delete</button>
+                </span>
               </summary>
               <div className="list" style={{marginTop:12}}>
                 {assigned.length===0 ? <div className="muted">No requirements assigned.</div> :
