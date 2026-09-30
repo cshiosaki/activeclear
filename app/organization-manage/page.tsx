@@ -157,7 +157,7 @@ export default function OrganizationManage(){
           .insert({
             organization_id:orgId,
             name:rec.label,
-            description:`Required ${rec.label} credential.`,
+            description:null,
             requirement_status:'required',
             active:true
           })
@@ -320,8 +320,13 @@ export default function OrganizationManage(){
             return <div className="item" key={r.id}>
               <div>
                 <strong>{r.name}</strong>
-                {r.description && <div className="muted">{r.description}</div>}
-                <div className="muted">Accepted: {mapped.join(', ') || 'Not mapped yet'}</div>
+                {r.description && !r.description.toLowerCase().includes(r.name.toLowerCase()) && (
+                  <div className="muted">{r.description}</div>
+                )}
+                {mapped.length > 0 && !(mapped.length === 1 && mapped[0] === r.name) && (
+                  <div className="muted">Accepted credential: {mapped.join(', ')}</div>
+                )}
+                {mapped.length === 0 && <div className="muted">Accepted credential not mapped yet</div>}
                 <div style={{marginTop:10}}>
                   <div className="muted" style={{fontWeight:700}}>Applies to roles</div>
                   {roles.length===0 ? <div className="muted">Add roles above first.</div> :
