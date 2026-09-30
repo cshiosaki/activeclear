@@ -181,7 +181,7 @@ export async function POST(req: NextRequest) {
           required: [
             'requirement_id','result','confidence','extracted_name','extracted_issuer',
             'extracted_credential_type','extracted_credential_number','extracted_issue_date',
-            'extracted_expiration_date','reasons','extracted_data'
+            'extracted_expiration_date','reasons'
           ],
           properties: {
             requirement_id: { type: 'string' },
@@ -196,8 +196,7 @@ export async function POST(req: NextRequest) {
             extracted_credential_number: { type: ['string','null'] },
             extracted_issue_date: { type: ['string','null'] },
             extracted_expiration_date: { type: ['string','null'] },
-            reasons: { type: 'array', items: { type: 'string' } },
-            extracted_data: { type: 'object', additionalProperties: true }
+            reasons: { type: 'array', items: { type: 'string' } }
           }
         }
       }
@@ -290,7 +289,7 @@ export async function POST(req: NextRequest) {
       extracted_issue_date: cleanDate(review.extracted_issue_date),
       extracted_expiration_date: cleanDate(review.extracted_expiration_date),
       reasons: review.reasons || [],
-      extracted_data: review.extracted_data || {},
+      extracted_data: {},
       model: 'gpt-5.6-terra',
       reviewed_at: new Date().toISOString(),
     };
