@@ -32,6 +32,12 @@ const CPR_REQUIREMENTS = [
   'AED',
 ];
 
+const CONCUSSION_SOURCES = [
+  'CDC HEADS UP',
+  'State / local approved concussion course',
+  'Other approved course',
+];
+
 const RECOMMENDED = [
   {label:'Background Check', credential:'Background Check', sports:null, governingBodies:null},
   {label:'CPR / AED', credential:'CPR / AED', sports:null, governingBodies:null},
@@ -58,6 +64,8 @@ export default function OrganizationManage(){
   const [backgroundSources,setBackgroundSources]=useState<string[]>([]);
   const [otherBackgroundSource,setOtherBackgroundSource]=useState('');
   const [cprRequirements,setCprRequirements]=useState<string[]>([]);
+  const [concussionSources,setConcussionSources]=useState<string[]>([]);
+  const [otherConcussionSource,setOtherConcussionSource]=useState('');
   const [customName,setCustomName]=useState('');
   const [customType,setCustomType]=useState('');
   const [customDescription,setCustomDescription]=useState('');
@@ -233,6 +241,23 @@ export default function OrganizationManage(){
           if(cprErr) throw cprErr;
         }
 
+        if(rec.label==='Concussion Training'){
+          const courses=[
+            ...concussionSources.filter(x=>x!=='Other approved course'),
+            ...(concussionSources.includes('Other approved course') && otherConcussionSource.trim()
+              ? [otherConcussionSource.trim()]
+              : [])
+          ];
+          const {error:concussionErr}=await supabase.from('organization_requirements')
+            .update({
+              validation_rules:{
+                accepted_courses:courses
+              }
+            })
+            .eq('id',reqId);
+          if(concussionErr) throw concussionErr;
+        }
+
         const {error:mapErr}=await supabase.from('requirement_credential_types')
           .upsert(
             {requirement_id:reqId,credential_type_id:type.id},
@@ -252,6 +277,8 @@ export default function OrganizationManage(){
       setBackgroundSources([]);
       setOtherBackgroundSource('');
       setCprRequirements([]);
+      setConcussionSources([]);
+      setOtherConcussionSource('');
       setMsg(`${activeRoleName} added with selected requirements.`);
       await load();
     }catch(error:any){
@@ -425,6 +452,10 @@ export default function OrganizationManage(){
                   if(r.label==='CPR / AED' && !e.target.checked){
                     setCprRequirements([]);
                   }
+                  if(r.label==='Concussion Training' && !e.target.checked){
+                    setConcussionSources([]);
+                    setOtherConcussionSource('');
+                  }
                 }}
                 style={{width:20,height:20}}
               />
@@ -487,6 +518,40 @@ export default function OrganizationManage(){
                 <div className="muted" style={{marginTop:10}}>
                   Must be completed through a certified course.
                 </div>
+              </div>
+            )}
+
+            {r.label==='Concussion Training' && selected.includes('Concussion Training') && (
+              <div className="card" style={{margin:'8px 0 14px 24px',padding:14}}>
+                <div style={{fontWeight:700,marginBottom:8}}>Accepted concussion training</div>
+                <div className="list">
+                  {CONCUSSION_SOURCES.map(source=>(
+                    <label className="item" key={source} style={{cursor:'pointer'}}>
+                      <span>{source}</span>
+                      <input
+                        type="checkbox"
+                        checked={concussionSources.includes(source)}
+                        onChange={e=>setConcussionSources(
+                          e.target.checked
+                            ? [...concussionSources,source]
+                            : concussionSources.filter(x=>x!==source)
+                        )}
+                        style={{width:20,height:20}}
+                      />
+                    </label>
+                  ))}
+                </div>
+
+                {concussionSources.includes('Other approved course') && (
+                  <div className="field" style={{marginTop:10}}>
+                    <label>Other approved concussion course</label>
+                    <input
+                      placeholder="Enter course or provider name"
+                      value={otherConcussionSource}
+                      onChange={e=>setOtherConcussionSource(e.target.value)}
+                    />
+                  </div>
+                )}
               </div>
             )}
           </div>
