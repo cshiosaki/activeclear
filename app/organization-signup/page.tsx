@@ -45,6 +45,12 @@ const GOVERNING_BODIES: Record<string,string[]> = {
   Other: ['None / Local','Other'],
 };
 
+function normalizeWebsite(value:string){
+  const v=value.trim();
+  if(!v) return '';
+  return /^https?:\/\//i.test(v) ? v : `https://${v}`;
+}
+
 export default function OrganizationSignup(){
   const router=useRouter();
   const [uid,setUid]=useState('');
@@ -119,7 +125,7 @@ export default function OrganizationSignup(){
       p_contact_name:form.contact_name || null,
       p_contact_email:form.contact_email || null,
       p_contact_phone:form.contact_phone || null,
-      p_website:form.website || null,
+      p_website:normalizeWebsite(form.website) || null,
       p_address_line1:form.address_line1 || null,
       p_address_line2:form.address_line2 || null,
       p_city:form.city || null,
@@ -252,7 +258,15 @@ export default function OrganizationSignup(){
             </div>
             <div className="field">
               <label>Website</label>
-              <input type="url" placeholder="https://..." value={form.website} onChange={e=>setForm({...form,website:e.target.value})}/>
+              <input
+                type="text"
+                inputMode="url"
+                placeholder="www.example.com"
+                value={form.website}
+                onChange={e=>setForm({...form,website:e.target.value})}
+                onBlur={()=>setForm(current=>({...current,website:normalizeWebsite(current.website)}))}
+              />
+              <small className="muted">You can enter www.example.com — ActiveClear will add https:// automatically.</small>
             </div>
           </div>
 
