@@ -315,6 +315,19 @@ export default function OrganizationManage(){
           if(safeSportErr) throw safeSportErr;
         }
 
+        if(rec.label==='USJF Membership' || rec.label==='USA Judo Membership'){
+          const {error:membershipErr}=await supabase.from('organization_requirements')
+            .update({
+              validation_rules:{
+                requires_membership_number:true,
+                requires_valid_expiration_date:true,
+                accepts_membership_card_image:true
+              }
+            })
+            .eq('id',reqId);
+          if(membershipErr) throw membershipErr;
+        }
+
         if(rec.label==='Code of Conduct'){
           let documentPath:string|null=existing?.source_document_path || null;
 
@@ -715,6 +728,15 @@ export default function OrganizationManage(){
                     />
                   </div>
                 )}
+              </div>
+            )}
+
+            {(r.label==='USJF Membership' || r.label==='USA Judo Membership') && selected.includes(r.label) && (
+              <div className="card" style={{margin:'8px 0 14px 24px',padding:14}}>
+                <div style={{fontWeight:700}}>Membership verification</div>
+                <div className="muted" style={{marginTop:6}}>
+                  Membership number and a current expiration date are required. A photo or image of the membership card is accepted.
+                </div>
               </div>
             )}
 
