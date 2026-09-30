@@ -387,7 +387,7 @@ export default function OrganizationManage(){
     <section className="card" style={{marginTop:24}}>
       <h2>2. Select requirements</h2>
       <p className="muted">
-        Showing requirements for {org.sport || 'this activity'}{(org.governing_bodies?.length ? ` · ${org.governing_bodies.join(' / ')}` : org.governing_body ? ` · ${org.governing_body}` : '')}.
+        Common requirements for {org.organization_type?.includes('Martial Arts') ? 'Martial Arts / ' : ''}{org.sport || 'this activity'}
       </p>
       <div className="list" style={{marginTop:12}}>
         {recommendedForOrg.map(r=>(
