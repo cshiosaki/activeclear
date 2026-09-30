@@ -66,6 +66,7 @@ export default function OrganizationSignup(){
     organization_type:'',
     sport:'',
     governing_body:'',
+    governing_bodies:[] as string[],
     other_governing_body:'',
     description:'',
     admin_title:'',
@@ -106,7 +107,7 @@ export default function OrganizationSignup(){
   },[router]);
 
   function setSport(sport:string){
-    setForm({...form,sport,governing_body:'',other_governing_body:''});
+    setForm({...form,sport,governing_body:'',governing_bodies:[],other_governing_body:''});
   }
 
   async function createOrganization(e:FormEvent){
@@ -119,7 +120,8 @@ export default function OrganizationSignup(){
     const {data,error}=await supabase.rpc('create_organization_for_current_user',{
       p_name:form.name.trim(),
       p_sport:form.sport || null,
-      p_governing_body:(form.governing_body==='Other' ? form.other_governing_body.trim() : form.governing_body) || null,
+      p_governing_body:form.governing_bodies[0] || null,
+      p_governing_bodies:form.governing_bodies,
       p_organization_type:form.organization_type || 'Club',
       p_description:form.description || null,
       p_admin_title:form.admin_title || null,
@@ -140,12 +142,14 @@ export default function OrganizationSignup(){
       return;
     }
 
-    if(form.governing_body==='Other' && form.other_governing_body.trim()){
-      await supabase.rpc('add_governing_body_option',{
-        p_sport:form.sport,
-        p_name:form.other_governing_body.trim(),
-        p_source_organization_id:data
-      });
+    for(const body of form.governing_bodies){
+      if(!governingOptions.includes(body)){
+        await supabase.rpc('add_governing_body_option',{
+          p_sport:form.sport,
+          p_name:body,
+          p_source_organization_id:data
+        });
+      }
     }
 
     setMsg('Organization created. Opening setup…');
@@ -245,26 +249,75 @@ export default function OrganizationSignup(){
 
           <div className="field">
             <label>Governing body / affiliation</label>
-            <select
-              disabled={!form.sport}
-              value={form.governing_body}
-              onChange={e=>setForm({...form,governing_body:e.target.value,other_governing_body:''})}
-            >
-              <option value="">{form.sport ? 'Select governing body / affiliation' : 'Select sport first'}</option>
-              {governingOptions.map(x=><option key={x} value={x}>{x}</option>)}
-            </select>
+            {!form.sport ? (
+              <div className="muted">Select a sport first.</div>
+            ) : (
+              <div className="list">
+                {governingOptions.filter(x=>x!=='Other').map(x=>(
+                  <label className="item" key={x} style={{cursor:'pointer'}}>
+                    <span>{x}</span>
+                    <input
+                      type="checkbox"
+                      checked={form.governing_bodies.includes(x)}
+                      onChange={e=>setForm({
+                        ...form,
+                        governing_bodies:e.target.checked
+                          ? [...form.governing_bodies,x]
+                          : form.governing_bodies.filter(v=>v!==x)
+                      })}
+                      style={{width:20,height:20}}
+                    />
+                  </label>
+                ))}
+                <label className="item" style={{cursor:'pointer'}}>
+                  <span>Other</span>
+                  <input
+                    type="checkbox"
+                    checked={form.governing_body==='Other'}
+                    onChange={e=>setForm({
+                      ...form,
+                      governing_body:e.target.checked?'Other':'',
+                      other_governing_body:e.target.checked?form.other_governing_body:''
+                    })}
+                    style={{width:20,height:20}}
+                  />
+                </label>
+              </div>
+            )}
           </div>
 
           {form.governing_body==='Other' && (
             <div className="field">
-              <label>Enter governing body / affiliation</label>
-              <input
-                required
-                placeholder="Type the full organization name"
-                value={form.other_governing_body}
-                onChange={e=>setForm({...form,other_governing_body:e.target.value})}
-              />
-              <small className="muted">ActiveClear will save this as a new option for future organization setups.</small>
+              <label>Enter other governing body / affiliation</label>
+              <div style={{display:'flex',gap:8}}>
+                <input
+                  placeholder="Type the full organization name"
+                  value={form.other_governing_body}
+                  onChange={e=>setForm({...form,other_governing_body:e.target.value})}
+                />
+                <button
+                  className="btn secondary"
+                  type="button"
+                  onClick={()=>{
+                    const v=form.other_governing_body.trim();
+                    if(!v) return;
+                    if(!form.governing_bodies.includes(v)){
+                      setForm({...form,governing_bodies:[...form.governing_bodies,v],other_governing_body:'',governing_body:''});
+                    }else{
+                      setForm({...form,other_governing_body:'',governing_body:''});
+                    }
+                  }}
+                >
+                  Add
+                </button>
+              </div>
+              <small className="muted">You can add more than one affiliation. New names are saved for future organization setups.</small>
+            </div>
+          )}
+
+          {form.governing_bodies.length>0 && (
+            <div className="notice">
+              <strong>Selected:</strong> {form.governing_bodies.join(' · ')}
             </div>
           )}
 
