@@ -13,6 +13,7 @@ export default function Home(){
   const [requirements,setRequirements]=useState<any[]>([]);
   const [reviews,setReviews]=useState<any[]>([]);
   const [exemptions,setExemptions]=useState<any[]>([]);
+  const [complianceByOrg,setComplianceByOrg]=useState<Record<string,any[]>>({});
   const [loading,setLoading]=useState(true);
   const [pct,setPct]=useState(0);
 
@@ -50,6 +51,12 @@ export default function Home(){
       setReviews(reviewData||[]);
       setExemptions(exemptionData||[]);
 
+      const complianceEntries=await Promise.all((m||[]).map(async (membership:any)=>{
+        const {data}=await supabase.rpc('get_my_organization_compliance',{p_organization_id:membership.organization_id});
+        return [membership.organization_id,data||[]] as const;
+      }));
+      setComplianceByOrg(Object.fromEntries(complianceEntries));
+
       const checks=[p?.first_name,p?.last_name,p?.phone,p?.date_of_birth,p?.address_line1,(e||[]).length>0,!!med];
       setPct(Math.round(checks.filter(Boolean).length/checks.length*100));
       setLoading(false);
@@ -66,37 +73,8 @@ export default function Home(){
   );
 
   function requirementStatus(req:any){
-    const approvedExemption=exemptions.some((x:any)=>
-      x.requirement_id===req.id &&
-      (!x.exemption_expires_date || new Date(x.exemption_expires_date+'T23:59:59') >= new Date())
-    );
-    if(approvedExemption) return 'met';
-
-    const accepted=(req.requirement_credential_types||[]).map((x:any)=>x.credential_type_id);
-    if(accepted.length===0) return 'missing';
-
-    const matching=creds.filter((cred:any)=>{
-      if(!accepted.includes(cred.credential_type_id)) return false;
-      if(cred.status==='rejected') return false;
-      if(cred.expires_date && new Date(cred.expires_date+'T23:59:59') < new Date()) return false;
-      return true;
-    });
-
-    if(!matching.length) return 'missing';
-
-    if(matching.some((cred:any)=>reviews.some((r:any)=>
-      r.credential_id===cred.id &&
-      r.requirement_id===req.id &&
-      r.result==='meets_requirement'
-    ))) return 'met';
-
-    if(matching.some((cred:any)=>reviews.some((r:any)=>
-      r.credential_id===cred.id &&
-      r.requirement_id===req.id &&
-      ['does_not_meet_requirement','wrong_credential_type','unreadable'].includes(r.result)
-    ))) return 'does_not_meet';
-
-    return 'pending';
+    const rows=complianceByOrg[req.organization_id]||[];
+    return rows.find((row:any)=>row.requirement_id===req.id)?.status || 'missing';
   }
 
   function requirementMet(req:any){
