@@ -5,16 +5,6 @@ import { useRouter } from 'next/navigation';
 import AppShell from '@/components/AppShell';
 import { supabase } from '@/lib/supabase';
 
-function statusFor(item:any){
-  if(!item.expires_date) return {label:item.status || 'pending', cls:item.status==='verified'?'green':'amber'};
-  const exp=new Date(item.expires_date+'T23:59:59');
-  const now=new Date();
-  const days=Math.ceil((exp.getTime()-now.getTime())/86400000);
-  if(days<0) return {label:'Expired', cls:'red'};
-  if(days<=60) return {label:`Expires in ${days} day${days===1?'':'s'}`, cls:'amber'};
-  return {label:item.status==='verified'?'Verified':'Current', cls:item.status==='verified'?'green':'amber'};
-}
-
 export default function Home(){
   const router=useRouter();
   const [name,setName]=useState('');
@@ -34,7 +24,7 @@ export default function Home(){
       const [{data:p},{data:c},{data:m},{data:e},{data:med},{data:reqs},{data:reviewData},{data:exemptionData}] = await Promise.all([
         supabase.from('profiles').select('*').eq('user_id',user.id).maybeSingle(),
         supabase.from('credentials')
-          .select('id,credential_type_id,issuing_body,credential_number,issued_date,expires_date,status,credential_types(name,renewal_url)')
+          .select('id,credential_type_id,issuing_body,credential_number,issued_date,expires_date,status,document_path,credential_types(name,renewal_url)')
           .order('expires_date',{ascending:true}),
         supabase.from('organization_memberships').select('id,organization_id,role,role_id,organizations(name,sport,governing_body)').eq('status','active'),
         supabase.from('emergency_contacts').select('id').eq('user_id',user.id).limit(1),
@@ -113,6 +103,17 @@ export default function Home(){
     return requirementStatus(req)==='met';
   }
 
+  function credentialStatus(item:any){
+    const itemReviews=reviews.filter((r:any)=>r.credential_id===item.id);
+    const hasFailure=itemReviews.some((r:any)=>['does_not_meet_requirement','wrong_credential_type','unreadable'].includes(r.result));
+    const hasApproval=itemReviews.some((r:any)=>r.result==='meets_requirement');
+
+    if(!item.document_path) return {label:'Supporting Document Required',cls:'red'};
+    if(hasFailure) return {label:'Does Not Meet',cls:'red'};
+    if(hasApproval) return {label:'Approved',cls:'green'};
+    return {label:'Pending',cls:'amber'};
+  }
+
   if(loading) return <div className="shell">Loading ActiveClear…</div>;
 
   const overall=expired>0?'Action Required':expiring>0?'Expiring Soon':'Clear';
@@ -155,7 +156,7 @@ export default function Home(){
           ) : (
             <div className="list">
               {creds.map(item=>{
-                const s=statusFor(item);
+                const s=credentialStatus(item);
                 const renewal=item.credential_types?.renewal_url;
                 return (
                   <div
