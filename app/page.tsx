@@ -21,6 +21,8 @@ export default function Home(){
   const [creds,setCreds]=useState<any[]>([]);
   const [orgs,setOrgs]=useState<any[]>([]);
   const [requirements,setRequirements]=useState<any[]>([]);
+  const [reviews,setReviews]=useState<any[]>([]);
+  const [exemptions,setExemptions]=useState<any[]>([]);
   const [loading,setLoading]=useState(true);
   const [pct,setPct]=useState(0);
 
@@ -29,24 +31,34 @@ export default function Home(){
       const {data:{user}}=await supabase.auth.getUser();
       if(!user){router.replace('/login');return;}
 
-      const [{data:p},{data:c},{data:m},{data:e},{data:med},{data:reqs}] = await Promise.all([
+      const [{data:p},{data:c},{data:m},{data:e},{data:med},{data:reqs},{data:reviewData},{data:exemptionData}] = await Promise.all([
         supabase.from('profiles').select('*').eq('user_id',user.id).maybeSingle(),
         supabase.from('credentials')
           .select('id,credential_type_id,issuing_body,credential_number,issued_date,expires_date,status,credential_types(name,renewal_url)')
           .order('expires_date',{ascending:true}),
-        supabase.from('organization_memberships').select('id,organization_id,role,organizations(name,sport,governing_body)').eq('status','active'),
+        supabase.from('organization_memberships').select('id,organization_id,role,role_id,organizations(name,sport,governing_body)').eq('status','active'),
         supabase.from('emergency_contacts').select('id').eq('user_id',user.id).limit(1),
         supabase.from('medical_profiles').select('user_id').eq('user_id',user.id).maybeSingle(),
         supabase.from('organization_requirements')
-          .select('id,organization_id,name,description,season,requirement_status,requirement_credential_types(credential_type_id)')
+          .select('id,organization_id,name,description,season,requirement_status,requires_acknowledgment,requirement_credential_types(credential_type_id),requirement_roles(role_id)')
           .eq('active',true)
-          .order('name')
+          .order('name'),
+        supabase.from('credential_requirement_reviews')
+          .select('credential_id,requirement_id,result,reviewed_at')
+          .eq('user_id',user.id)
+          .order('reviewed_at',{ascending:false}),
+        supabase.from('credential_override_requests')
+          .select('credential_id,requirement_id,organization_id,status,exemption_expires_date')
+          .eq('user_id',user.id)
+          .eq('status','approved')
       ]);
 
       setName([p?.first_name,p?.last_name].filter(Boolean).join(' ')||user.email||'Member');
       setCreds(c||[]);
       setOrgs(m||[]);
       setRequirements(reqs||[]);
+      setReviews(reviewData||[]);
+      setExemptions(exemptionData||[]);
 
       const checks=[p?.first_name,p?.last_name,p?.phone,p?.date_of_birth,p?.address_line1,(e||[]).length>0,!!med];
       setPct(Math.round(checks.filter(Boolean).length/checks.length*100));
@@ -63,15 +75,42 @@ export default function Home(){
     [creds]
   );
 
-  function requirementMet(req:any){
+  function requirementStatus(req:any){
+    const approvedExemption=exemptions.some((x:any)=>
+      x.requirement_id===req.id &&
+      (!x.exemption_expires_date || new Date(x.exemption_expires_date+'T23:59:59') >= new Date())
+    );
+    if(approvedExemption) return 'met';
+
     const accepted=(req.requirement_credential_types||[]).map((x:any)=>x.credential_type_id);
-    if(accepted.length===0) return false;
-    return creds.some((cred:any)=>{
+    if(accepted.length===0) return 'missing';
+
+    const matching=creds.filter((cred:any)=>{
       if(!accepted.includes(cred.credential_type_id)) return false;
       if(cred.status==='rejected') return false;
       if(cred.expires_date && new Date(cred.expires_date+'T23:59:59') < new Date()) return false;
       return true;
     });
+
+    if(!matching.length) return 'missing';
+
+    if(matching.some((cred:any)=>reviews.some((r:any)=>
+      r.credential_id===cred.id &&
+      r.requirement_id===req.id &&
+      r.result==='meets_requirement'
+    ))) return 'met';
+
+    if(matching.some((cred:any)=>reviews.some((r:any)=>
+      r.credential_id===cred.id &&
+      r.requirement_id===req.id &&
+      ['does_not_meet_requirement','wrong_credential_type','unreadable'].includes(r.result)
+    ))) return 'does_not_meet';
+
+    return 'pending';
+  }
+
+  function requirementMet(req:any){
+    return requirementStatus(req)==='met';
   }
 
   if(loading) return <div className="shell">Loading ActiveClear…</div>;
@@ -173,7 +212,11 @@ export default function Home(){
             <p className="muted">No organizations connected yet.</p>
           ) : orgs.map((membership:any)=>{
             const org:any = Array.isArray(membership.organizations) ? membership.organizations[0] : membership.organizations;
-            const reqs=(requirements||[]).filter((r:any)=>r.organization_id===membership.organization_id && r.requirement_status==='required');
+            const reqs=(requirements||[]).filter((r:any)=>{
+              if(r.organization_id!==membership.organization_id || r.requirement_status!=='required') return false;
+              const assigned=r.requirement_roles||[];
+              return assigned.length===0 || !membership.role_id || assigned.some((x:any)=>x.role_id===membership.role_id);
+            });
             const met=reqs.filter(requirementMet).length;
             const complete=reqs.length>0 && met===reqs.length;
 
@@ -195,7 +238,9 @@ export default function Home(){
                   {reqs.length===0 ? (
                     <div className="notice">Requirements have not been configured for this organization yet.</div>
                   ) : reqs.map((req:any)=>{
-                    const ok=requirementMet(req);
+                    const status=requirementStatus(req);
+                    const label=status==='met'?'Met':status==='pending'?'Pending':status==='does_not_meet'?'Does Not Meet':'Missing';
+                    const cls=status==='met'?'green':status==='pending'?'amber':'red';
                     return (
                       <div key={req.id} className="item">
                         <div>
@@ -203,7 +248,7 @@ export default function Home(){
                           {req.description && <div className="muted">{req.description}</div>}
                           {req.season && <div className="muted">Season: {req.season}</div>}
                         </div>
-                        <span className={'status '+(ok?'green':'red')}>{ok?'Met':'Missing'}</span>
+                        <span className={'status '+cls}>{label}</span>
                       </div>
                     );
                   })}
