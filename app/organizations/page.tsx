@@ -32,12 +32,13 @@ export default function Organizations(){
   const [acknowledgments,setAcknowledgments]=useState<any[]>([]);
   const [openOrg,setOpenOrg]=useState<string|null>(null);
   const [msg,setMsg]=useState('');
+  const [autoReviewDone,setAutoReviewDone]=useState(false);
 
   async function load(id:string){
     const [{data:o},{data:m},{data:c},{data:r},{data:roleData},{data:a},{data:reviewData},{data:exemptionData}] = await Promise.all([
       supabase.rpc('list_active_organization_directory'),
       supabase.from('organization_memberships').select('*').eq('user_id',id).eq('status','active'),
-      supabase.from('credentials').select('id,credential_type_id,expires_date,status'),
+      supabase.from('credentials').select('id,credential_type_id,expires_date,status,document_path'),
       supabase.from('organization_requirements')
         .select('id,organization_id,name,description,season,requirement_status,source_document_path,source_document_url,requires_acknowledgment,requirement_credential_types(credential_type_id),requirement_roles(role_id)')
         .eq('active',true)
@@ -84,6 +85,52 @@ export default function Organizations(){
       await load(user.id);
     })();
   },[router]);
+
+  useEffect(()=>{
+    if(!uid || autoReviewDone || memberships.length===0 || credentials.length===0) return;
+
+    const needsReview=credentials.filter((credential:any)=>{
+      if(!credential.document_path) return false;
+
+      const relevantRequirementIds=new Set<string>();
+      memberships.forEach((membership:any)=>{
+        const reqs=requirements[membership.organization_id]||[];
+        reqs.forEach((req:any)=>{
+          const assigned=req.requirement_roles||[];
+          const roleApplies=assigned.length===0 || !membership.role_id || assigned.some((x:any)=>x.role_id===membership.role_id);
+          const typeApplies=(req.requirement_credential_types||[]).some((x:any)=>x.credential_type_id===credential.credential_type_id);
+          if(roleApplies && typeApplies) relevantRequirementIds.add(req.id);
+        });
+      });
+
+      if(relevantRequirementIds.size===0) return false;
+      return [...relevantRequirementIds].some(reqId=>
+        !reviews.some((review:any)=>review.credential_id===credential.id && review.requirement_id===reqId)
+      );
+    });
+
+    if(needsReview.length===0){
+      setAutoReviewDone(true);
+      return;
+    }
+
+    (async()=>{
+      setAutoReviewDone(true);
+      const {data:sessionData}=await supabase.auth.getSession();
+      const token=sessionData.session?.access_token;
+      if(!token) return;
+
+      for(const credential of needsReview){
+        await fetch('/api/ai-review',{
+          method:'POST',
+          headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},
+          body:JSON.stringify({credentialId:credential.id})
+        }).catch(()=>null);
+      }
+
+      await load(uid);
+    })();
+  },[uid,autoReviewDone,memberships,credentials,requirements,reviews]);
 
   async function connect(orgId:string){
     const roleId=selectedRole[orgId] || roles[orgId]?.[0]?.id || null;
@@ -191,12 +238,17 @@ export default function Organizations(){
   const summaries=useMemo(()=>{
     const out:Record<string,{met:number,total:number,complete:boolean}>={};
     orgs.forEach(o=>{
-      const reqs=(requirements[o.id]||[]).filter(r=>r.requirement_status==='required');
+      const membership=memberships.find((m:any)=>m.organization_id===o.id);
+      const reqs=(requirements[o.id]||[]).filter((r:any)=>{
+        if(r.requirement_status!=='required') return false;
+        const assigned=r.requirement_roles||[];
+        return assigned.length===0 || !membership?.role_id || assigned.some((x:any)=>x.role_id===membership.role_id);
+      });
       const met=reqs.filter(requirementMet).length;
       out[o.id]={met,total:reqs.length,complete:reqs.length>0 && met===reqs.length};
     });
     return out;
-  },[orgs,requirements,credentials,reviews,exemptions,acknowledgments]);
+  },[orgs,memberships,requirements,credentials,reviews,exemptions,acknowledgments]);
 
   return <AppShell>
     <div className="eyebrow">Organizations</div>
