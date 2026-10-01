@@ -94,7 +94,16 @@ export default function Home(){
 
   if(loading) return <div className="shell">Loading ActiveClear…</div>;
 
-  const overall=expired>0?'Action Required':expiring>0?'Expiring Soon':'Clear';
+  const complianceStatuses=Object.values(complianceByOrg).flat().map((row:any)=>row.status);
+  const hasComplianceAction=complianceStatuses.some((status:any)=>['missing','does_not_meet','supporting_document_required'].includes(status));
+  const hasCompliancePending=complianceStatuses.some((status:any)=>status==='pending');
+  const overall=hasComplianceAction
+    ? 'Action Required'
+    : hasCompliancePending
+      ? 'Pending'
+      : expiring>0
+        ? 'Expiring Soon'
+        : 'Clear';
 
   return (
     <AppShell>
@@ -103,7 +112,7 @@ export default function Home(){
           <div className="eyebrow">Profile Home</div>
           <h1>Welcome, {name.split(' ')[0]}</h1>
           <p className="muted">Your credentials stay with you. Organizations apply their own requirements to the same profile.</p>
-          <span className={'status '+(overall==='Clear'?'green':overall==='Expiring Soon'?'amber':'red')}>
+          <span className={'status '+(overall==='Clear'?'green':overall==='Expiring Soon'||overall==='Pending'?'amber':'red')}>
             ActiveClear Status: {overall}
           </span>
         </section>
