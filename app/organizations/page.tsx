@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase';
 
 type Requirement = {
   id:string;
+  organization_id:string;
   name:string;
   description:string|null;
   season:string|null;
@@ -30,6 +31,7 @@ export default function Organizations(){
   const [reviews,setReviews]=useState<any[]>([]);
   const [exemptions,setExemptions]=useState<any[]>([]);
   const [acknowledgments,setAcknowledgments]=useState<any[]>([]);
+  const [complianceByOrg,setComplianceByOrg]=useState<Record<string,any[]>>({});
   const [openOrg,setOpenOrg]=useState<string|null>(null);
   const [msg,setMsg]=useState('');
   const [autoReviewDone,setAutoReviewDone]=useState(false);
@@ -61,6 +63,12 @@ export default function Organizations(){
     setReviews(reviewData||[]);
     setExemptions(exemptionData||[]);
     setAcknowledgments(a||[]);
+
+    const complianceEntries=await Promise.all((m||[]).map(async (membership:any)=>{
+      const {data}=await supabase.rpc('get_my_organization_compliance',{p_organization_id:membership.organization_id});
+      return [membership.organization_id,data||[]] as const;
+    }));
+    setComplianceByOrg(Object.fromEntries(complianceEntries));
 
     const roleGrouped:Record<string,any[]> = {};
     (roleData||[]).forEach((role:any)=>{
@@ -152,39 +160,8 @@ export default function Organizations(){
   }
 
   function requirementStatus(req:Requirement){
-    if(req.requires_acknowledgment){
-      return acknowledgments.some(a=>a.requirement_id===req.id) ? 'met' : 'missing';
-    }
-
-    const approvedExemption=exemptions.some((x:any)=>
-      x.requirement_id===req.id &&
-      (!x.exemption_expires_date || new Date(x.exemption_expires_date+'T23:59:59') >= new Date())
-    );
-    if(approvedExemption) return 'met';
-
-    const accepted=(req.requirement_credential_types||[]).map(x=>x.credential_type_id);
-    if(accepted.length===0) return 'missing';
-
-    const matchingCredentials=credentials.filter(c=>{
-      if(!accepted.includes(c.credential_type_id)) return false;
-      if(c.status==='rejected') return false;
-      if(c.expires_date && new Date(c.expires_date+'T23:59:59') < new Date()) return false;
-      return true;
-    });
-
-    if(!matchingCredentials.length) return 'missing';
-
-    for(const credential of matchingCredentials){
-      const review=reviews.find((r:any)=>r.credential_id===credential.id && r.requirement_id===req.id);
-      if(review?.result==='meets_requirement') return 'met';
-    }
-
-    const hasFailure=matchingCredentials.some(credential=>{
-      const review=reviews.find((r:any)=>r.credential_id===credential.id && r.requirement_id===req.id);
-      return review && ['does_not_meet_requirement','wrong_credential_type','unreadable'].includes(review.result);
-    });
-
-    return hasFailure ? 'does_not_meet' : 'pending';
+    const rows=complianceByOrg[req.organization_id]||[];
+    return rows.find((row:any)=>row.requirement_id===req.id)?.status || 'missing';
   }
 
   function requirementMet(req:Requirement){
@@ -248,7 +225,7 @@ export default function Organizations(){
       out[o.id]={met,total:reqs.length,complete:reqs.length>0 && met===reqs.length};
     });
     return out;
-  },[orgs,memberships,requirements,credentials,reviews,exemptions,acknowledgments]);
+  },[orgs,memberships,requirements,complianceByOrg]);
 
   return <AppShell>
     <div className="eyebrow">Organizations</div>
@@ -314,7 +291,7 @@ export default function Organizations(){
                   {reqs.map(req=>{
                     const status=requirementStatus(req);
                     const met=status==='met';
-                    const label=status==='met'?'Met':status==='pending'?'Pending':status==='does_not_meet'?'Does Not Meet':'Missing';
+                    const label=status==='met'?'Met':status==='pending'?'Pending':status==='does_not_meet'?'Does Not Meet':status==='supporting_document_required'?'Supporting Document Required':'Missing';
                     const cls=status==='met'?'green':status==='pending'?'amber':'red';
 
                     return <div className="item" key={req.id}>
