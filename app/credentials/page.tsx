@@ -362,7 +362,7 @@ export default function Credentials() {
 
                       return <>
                         <span className={'status ' + cls}>{label}</span>
-                        {verification?.reasons?.length>0 && label!=='Verified' && (
+                        {isFail && verification?.reasons?.length>0 && (
                           <div className="muted" style={{maxWidth:300,textAlign:'right',fontSize:13,lineHeight:1.35}}>
                             {verification.reasons[0]}
                           </div>
