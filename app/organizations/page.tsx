@@ -47,9 +47,8 @@ export default function Organizations(){
         .order('name'),
       supabase.from('organization_roles').select('*').eq('is_active',true).order('name'),
       supabase.from('requirement_acknowledgments').select('*').eq('user_id',id),
-      supabase.from('credential_requirement_reviews')
-        .select('credential_id,requirement_id,result,reviewed_at')
-        .eq('user_id',id)
+      supabase.from('credential_verifications')
+        .select('credential_id,result,reviewed_at')
         .order('reviewed_at',{ascending:false}),
       supabase.from('credential_override_requests')
         .select('credential_id,requirement_id,organization_id,status,exemption_expires_date')
@@ -99,22 +98,7 @@ export default function Organizations(){
 
     const needsReview=credentials.filter((credential:any)=>{
       if(!credential.document_path) return false;
-
-      const relevantRequirementIds=new Set<string>();
-      memberships.forEach((membership:any)=>{
-        const reqs=requirements[membership.organization_id]||[];
-        reqs.forEach((req:any)=>{
-          const assigned=req.requirement_roles||[];
-          const roleApplies=assigned.length===0 || !membership.role_id || assigned.some((x:any)=>x.role_id===membership.role_id);
-          const typeApplies=(req.requirement_credential_types||[]).some((x:any)=>x.credential_type_id===credential.credential_type_id);
-          if(roleApplies && typeApplies) relevantRequirementIds.add(req.id);
-        });
-      });
-
-      if(relevantRequirementIds.size===0) return false;
-      return [...relevantRequirementIds].some(reqId=>
-        !reviews.some((review:any)=>review.credential_id===credential.id && review.requirement_id===reqId)
-      );
+      return !reviews.some((review:any)=>review.credential_id===credential.id);
     });
 
     if(needsReview.length===0){
@@ -159,13 +143,36 @@ export default function Organizations(){
     await load(uid);
   }
 
-  function requirementStatus(req:Requirement){
+  function requirementRow(req:Requirement){
     const rows=complianceByOrg[req.organization_id]||[];
-    return rows.find((row:any)=>row.requirement_id===req.id)?.status || 'missing';
+    return rows.find((row:any)=>row.requirement_id===req.id) || null;
+  }
+
+  function requirementStatus(req:Requirement){
+    return requirementRow(req)?.status || 'missing';
   }
 
   function requirementMet(req:Requirement){
     return requirementStatus(req)==='met';
+  }
+
+  function credentialForRequirement(req:Requirement){
+    const row=requirementRow(req);
+    if(row?.credential_id) return credentials.find((credential:any)=>credential.id===row.credential_id) || null;
+
+    const acceptedTypes=new Set((req.requirement_credential_types||[]).map(x=>x.credential_type_id));
+    return credentials.find((credential:any)=>acceptedTypes.has(credential.credential_type_id)) || null;
+  }
+
+  function openCredentialAction(req:Requirement){
+    const credential=credentialForRequirement(req);
+    if(credential?.id){
+      router.push(`/credentials?edit=${credential.id}&fromOrg=${req.organization_id}&requirement=${req.id}`);
+      return;
+    }
+
+    const credentialTypeId=req.requirement_credential_types?.[0]?.credential_type_id || '';
+    router.push(`/credentials?upload=1&type=${credentialTypeId}&fromOrg=${req.organization_id}&requirement=${req.id}`);
   }
 
   async function openRequirementDocument(req:Requirement){
@@ -289,9 +296,13 @@ export default function Organizations(){
               ) : (
                 <div className="list">
                   {reqs.map(req=>{
-                    const status=requirementStatus(req);
+                    const row=requirementRow(req);
+                    const status=row?.status || 'missing';
                     const met=status==='met';
-                    const label=status==='met'?'Met':status==='pending'?'Pending':status==='does_not_meet'?'Does Not Meet':status==='supporting_document_required'?'Supporting Document Required':'Missing';
+                    const credential=credentialForRequirement(req);
+                    const label=row?.exemption_id
+                      ? 'Special Approval'
+                      : status==='met'?'Met':status==='pending'?'Pending':status==='does_not_meet'?'Does Not Meet':status==='supporting_document_required'?'Supporting Document Required':'Missing';
                     const cls=status==='met'?'green':status==='pending'?'amber':'red';
 
                     return <div className="item" key={req.id}>
@@ -299,6 +310,15 @@ export default function Organizations(){
                         <strong>{req.name}</strong>
                         {req.description && <div className="muted">{req.description}</div>}
                         {req.season && <div className="muted">Season: {req.season}</div>}
+
+                        {!met && !req.requires_acknowledgment && (
+                          <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:10}}>
+                            <button className="btn green" type="button" onClick={()=>openCredentialAction(req)}>
+                              {credential ? 'Correct credential' : 'Upload credential'}
+                            </button>
+                          </div>
+                        )}
+
                         {req.requires_acknowledgment && (
                           <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:10}}>
                             {(req.source_document_path || req.source_document_url) && (
