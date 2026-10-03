@@ -36,8 +36,8 @@ export default function Credentials() {
         .select('*,credential_types(name,renewal_url)')
         .order('created_at', { ascending: false }),
       supabase
-        .from('credential_requirement_reviews')
-        .select('credential_id,requirement_id,organization_id,result,reasons,reviewed_at')
+        .from('credential_verifications')
+        .select('credential_id,result,reasons,reviewed_at,extracted_name,extracted_issuer,extracted_credential_number,extracted_issue_date,extracted_expiration_date')
         .order('reviewed_at', { ascending: false }),
       supabase
         .from('credential_override_requests')
@@ -285,48 +285,30 @@ export default function Credentials() {
 
                   <div style={{ display: 'grid', gap: 8, justifyItems: 'end' }}>
                     {(() => {
-                      const itemReviews = reviews.filter((r:any)=>r.credential_id===item.id);
-                      const priority = ['wrong_credential_type','unreadable','does_not_meet_requirement','needs_human_review','meets_requirement'];
-                      const top = itemReviews.length
-                        ? [...itemReviews].sort((a:any,b:any)=>priority.indexOf(a.result)-priority.indexOf(b.result))[0]
-                        : null;
-
-                      const isFail = top && ['wrong_credential_type','unreadable','does_not_meet_requirement'].includes(top.result);
-                      const label = isFail
-                        ? 'Does Not Meet'
-                        : top?.result==='meets_requirement'
+                      const verification = reviews.find((r:any)=>r.credential_id===item.id);
+                      const isFail = verification && ['does_not_meet','wrong_credential_type','unreadable','expired'].includes(verification.result);
+                      const label = !item.document_path
+                        ? 'Supporting Document Required'
+                        : verification?.result==='verified'
                           ? 'Verified'
-                          : item.status==='rejected'
-                            ? 'Rejected'
-                            : item.status==='verified'
-                              ? 'Verified'
+                          : verification?.result==='expired'
+                            ? 'Expired'
+                            : isFail
+                              ? 'Does Not Meet'
                               : 'Pending';
-                      const cls = isFail || item.status==='rejected' ? 'red' : label==='Verified' ? 'green' : 'amber';
+                      const cls = label==='Verified' ? 'green' : label==='Pending' ? 'amber' : 'red';
 
                       return <>
                         <span className={'status ' + cls}>{label}</span>
-                        {isFail && top?.reasons?.length>0 && (
-                          <div className="muted" style={{maxWidth:260,textAlign:'right',fontSize:13,lineHeight:1.35}}>
-                            {(() => {
-                              const text=top.reasons.join(' ').toLowerCase();
-                              if(text.includes('expired') || text.includes('completion date') || text.includes('current through') || text.includes('annual training')) return 'Expired';
-                              if(text.includes('wrong credential') || text.includes('does not match') || text.includes('credential type')) return 'Wrong credential';
-                              if(text.includes('unreadable') || text.includes('cannot read') || text.includes('not legible')) return 'Unreadable';
-                              if(text.includes('name') && text.includes('match')) return 'Name does not match';
-                              if(text.includes('issuer') || text.includes('provider')) return 'Unapproved provider';
-                              if(text.includes('expiration') || text.includes('valid-through')) return 'Expiration could not be verified';
-                              return top.reasons[0];
-                            })()}
+                        {verification?.reasons?.length>0 && label!=='Verified' && (
+                          <div className="muted" style={{maxWidth:300,textAlign:'right',fontSize:13,lineHeight:1.35}}>
+                            {verification.reasons[0]}
                           </div>
                         )}
-                        {isFail && top && (
-                          <button
-                            className="btn secondary"
-                            type="button"
-                            onClick={()=>requestExemption(item,top)}
-                          >
-                            Request exemption
-                          </button>
+                        {isFail && (
+                          <div className="muted" style={{maxWidth:300,textAlign:'right',fontSize:12,lineHeight:1.35}}>
+                            This is the ActiveClear master result. An organization can only accept it through a Special Approval exception.
+                          </div>
                         )}
                       </>;
                     })()}
