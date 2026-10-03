@@ -27,6 +27,9 @@ export default function Credentials() {
   const [busy, setBusy] = useState(false);
   const [reviews, setReviews] = useState<any[]>([]);
   const [overrideRequests, setOverrideRequests] = useState<any[]>([]);
+  const [quickFile, setQuickFile] = useState<File | null>(null);
+  const [quickBusy, setQuickBusy] = useState(false);
+  const [quickMsg, setQuickMsg] = useState('');
 
   async function load() {
     const [{ data: t }, { data: c }, { data: r }, { data: ovr }] = await Promise.all([
@@ -199,6 +202,63 @@ export default function Credentials() {
     }).catch(() => null);
   }
 
+  async function quickUploadCredential() {
+    if (!quickFile) {
+      setQuickMsg('Choose a certificate, membership card, or credential file first.');
+      return;
+    }
+
+    setQuickBusy(true);
+    setQuickMsg('Uploading and reading credential…');
+
+    const safe = quickFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const documentPath = `${uid}/${crypto.randomUUID()}-${safe}`;
+    const { error: uploadError } = await supabase.storage
+      .from('credential-documents')
+      .upload(documentPath, quickFile);
+
+    if (uploadError) {
+      setQuickMsg(uploadError.message);
+      setQuickBusy(false);
+      return;
+    }
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      await supabase.storage.from('credential-documents').remove([documentPath]);
+      setQuickMsg('Your session expired. Please sign in again.');
+      setQuickBusy(false);
+      return;
+    }
+
+    const response = await fetch('/api/credential-extract', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ documentPath }),
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload?.credential?.id) {
+      await supabase.storage.from('credential-documents').remove([documentPath]);
+      setQuickMsg(payload?.error || 'ActiveClear could not read this credential.');
+      setQuickBusy(false);
+      return;
+    }
+
+    setQuickMsg(
+      `${payload.extracted?.credential_type_name || 'Credential'} added. ActiveClear is verifying it now.`
+    );
+    setQuickFile(null);
+    await load();
+    await runAIReview(payload.credential.id);
+    await load();
+    setQuickBusy(false);
+  }
+
   async function requestExemption(item:any, review:any){
     const existing=overrideRequests.find((x:any)=>
       x.credential_id===item.id &&
@@ -334,100 +394,134 @@ export default function Credentials() {
         </section>
 
         <section className="card">
-          <h2>{editingId ? 'Edit credential' : 'Add credential'}</h2>
+          {!editingId ? (
+            <>
+              <h2>Upload credential</h2>
+              <p className="muted">
+                Upload the certificate, membership card, or credential. ActiveClear will identify it and fill in the details automatically.
+              </p>
 
-          {editingId && (
-            <div className="notice" style={{ marginBottom: 16 }}>
-              You are editing an existing credential. Saving changes will return its verification status to pending.
-            </div>
-          )}
+              <div className="form">
+                <div className="field">
+                  <label>Certificate or credential file</label>
+                  <input
+                    type="file"
+                    accept=".pdf,.png,.jpg,.jpeg,.webp"
+                    onChange={(e) => {
+                      setQuickFile(e.target.files?.[0] || null);
+                      setQuickMsg('');
+                    }}
+                  />
+                </div>
 
-          <form className="form" onSubmit={saveCredential}>
-            <div className="field">
-              <label>Credential type</label>
-              <select
-                value={form.credential_type_id}
-                onChange={(e) => setForm({ ...form, credential_type_id: e.target.value })}
-              >
-                {types.map((type) => (
-                  <option key={type.id} value={type.id}>
-                    {type.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+                <div className="notice">
+                  ActiveClear will read the credential type, issuing organization, certificate/member number, issue date, and expiration date when available.
+                </div>
 
-            <div className="field">
-              <label>Issuing organization</label>
-              <input
-                value={form.issuing_body}
-                onChange={(e) => setForm({ ...form, issuing_body: e.target.value })}
-              />
-            </div>
+                {quickMsg && <div className="notice">{quickMsg}</div>}
 
-            <div className="field">
-              <label>Certificate / ID number</label>
-              <input
-                value={form.credential_number}
-                onChange={(e) => setForm({ ...form, credential_number: e.target.value })}
-              />
-            </div>
-
-            <div className="row">
-              <div className="field">
-                <label>Issued date</label>
-                <input
-                  type="date"
-                  value={form.issued_date}
-                  onChange={(e) => setForm({ ...form, issued_date: e.target.value })}
-                />
-              </div>
-
-              <div className="field">
-                <label>Expiration date</label>
-                <input
-                  type="date"
-                  value={form.expires_date}
-                  onChange={(e) => setForm({ ...form, expires_date: e.target.value })}
-                />
-              </div>
-            </div>
-
-            <div className="field">
-              <label>{editingId ? 'Replace certificate file (optional)' : 'Certificate file'}</label>
-              <input
-                type="file"
-                accept=".pdf,.png,.jpg,.jpeg,.webp"
-                onChange={(e) => setForm({ ...form, file: e.target.files?.[0] || null })}
-              />
-              {editingId && existingDocumentPath && (
-                <small className="muted">Existing document will be kept unless you upload a replacement.</small>
-              )}
-            </div>
-
-            <label>
-              <input
-                type="checkbox"
-                checked={form.attested}
-                onChange={(e) => setForm({ ...form, attested: e.target.checked })}
-              />{' '}
-              I certify this credential information and document are authentic and unaltered.
-            </label>
-
-            {msg && <div className="notice">{msg}</div>}
-
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-              <button className="btn green" disabled={busy}>
-                {busy ? 'Saving…' : editingId ? 'Save changes' : 'Upload credential'}
-              </button>
-
-              {editingId && (
-                <button className="btn secondary" type="button" onClick={resetForm}>
-                  Cancel edit
+                <button
+                  className="btn green"
+                  type="button"
+                  disabled={quickBusy || !quickFile}
+                  onClick={quickUploadCredential}
+                >
+                  {quickBusy ? 'Reading credential…' : 'Upload & auto-fill'}
                 </button>
-              )}
-            </div>
-          </form>
+              </div>
+            </>
+          ) : (
+            <>
+              <h2>Edit credential</h2>
+              <div className="notice" style={{ marginBottom: 16 }}>
+                Correct anything ActiveClear read incorrectly. Saving changes will return the credential to pending verification.
+              </div>
+
+              <form className="form" onSubmit={saveCredential}>
+                <div className="field">
+                  <label>Credential type</label>
+                  <select
+                    value={form.credential_type_id}
+                    onChange={(e) => setForm({ ...form, credential_type_id: e.target.value })}
+                  >
+                    {types.map((type) => (
+                      <option key={type.id} value={type.id}>
+                        {type.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="field">
+                  <label>Issuing organization</label>
+                  <input
+                    value={form.issuing_body}
+                    onChange={(e) => setForm({ ...form, issuing_body: e.target.value })}
+                  />
+                </div>
+
+                <div className="field">
+                  <label>Certificate / ID number</label>
+                  <input
+                    value={form.credential_number}
+                    onChange={(e) => setForm({ ...form, credential_number: e.target.value })}
+                  />
+                </div>
+
+                <div className="row">
+                  <div className="field">
+                    <label>Issued date</label>
+                    <input
+                      type="date"
+                      value={form.issued_date}
+                      onChange={(e) => setForm({ ...form, issued_date: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="field">
+                    <label>Expiration date</label>
+                    <input
+                      type="date"
+                      value={form.expires_date}
+                      onChange={(e) => setForm({ ...form, expires_date: e.target.value })}
+                    />
+                  </div>
+                </div>
+
+                <div className="field">
+                  <label>Replace certificate file (optional)</label>
+                  <input
+                    type="file"
+                    accept=".pdf,.png,.jpg,.jpeg,.webp"
+                    onChange={(e) => setForm({ ...form, file: e.target.files?.[0] || null })}
+                  />
+                  {existingDocumentPath && (
+                    <small className="muted">Existing document will be kept unless you upload a replacement.</small>
+                  )}
+                </div>
+
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={form.attested}
+                    onChange={(e) => setForm({ ...form, attested: e.target.checked })}
+                  />{' '}
+                  I certify this credential information and document are authentic and unaltered.
+                </label>
+
+                {msg && <div className="notice">{msg}</div>}
+
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  <button className="btn green" disabled={busy}>
+                    {busy ? 'Saving…' : 'Save changes'}
+                  </button>
+                  <button className="btn secondary" type="button" onClick={resetForm}>
+                    Cancel edit
+                  </button>
+                </div>
+              </form>
+            </>
+          )}
         </section>
       </div>
     </AppShell>
