@@ -425,20 +425,31 @@ export default function Credentials() {
                         )}
                       </>;
                     })()}
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      <button className="btn secondary" type="button" onClick={() => startEdit(item)}>
-                        Edit
-                      </button>
-                      <button
-                        className="btn"
-                        type="button"
-                        disabled={busy}
-                        onClick={() => deleteCredential(item)}
-                        style={{ background: '#fde7e7', color: '#9a2626' }}
-                      >
-                        Delete
-                      </button>
-                    </div>
+                    {(() => {
+                      const verification = reviews.find((r:any)=>r.credential_id===item.id);
+                      const isVerifiedCurrent =
+                        verification?.result==='verified' &&
+                        (!item.expires_date || new Date(item.expires_date+'T23:59:59') >= new Date());
+
+                      if(isVerifiedCurrent) return null;
+
+                      return (
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                          <button className="btn secondary" type="button" onClick={() => startEdit(item)}>
+                            Edit
+                          </button>
+                          <button
+                            className="btn"
+                            type="button"
+                            disabled={busy}
+                            onClick={() => deleteCredential(item)}
+                            style={{ background: '#fde7e7', color: '#9a2626' }}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
               ))
