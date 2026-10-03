@@ -28,6 +28,7 @@ export default function Credentials() {
   const [reviews, setReviews] = useState<any[]>([]);
   const [overrideRequests, setOverrideRequests] = useState<any[]>([]);
   const [quickFile, setQuickFile] = useState<File | null>(null);
+  const [quickInputKey, setQuickInputKey] = useState(0);
   const [quickBusy, setQuickBusy] = useState(false);
   const [quickMsg, setQuickMsg] = useState('');
 
@@ -250,9 +251,10 @@ export default function Credentials() {
     }
 
     setQuickMsg(
-      `${payload.extracted?.credential_type_name || 'Credential'} added. ActiveClear is verifying it now.`
+      `${payload.extracted?.credential_type_name || 'Credential'} added. Ready for the next file.`
     );
     setQuickFile(null);
+    setQuickInputKey((current) => current + 1);
     await load();
     await runAIReview(payload.credential.id);
     await load();
@@ -405,6 +407,7 @@ export default function Credentials() {
                 <div className="field">
                   <label>Certificate or credential file</label>
                   <input
+                    key={quickInputKey}
                     type="file"
                     accept=".pdf,.png,.jpg,.jpeg,.webp"
                     onChange={(e) => {
