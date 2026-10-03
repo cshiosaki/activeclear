@@ -34,9 +34,8 @@ export default function Home(){
           .select('id,organization_id,name,description,season,requirement_status,requires_acknowledgment,requirement_credential_types(credential_type_id),requirement_roles(role_id)')
           .eq('active',true)
           .order('name'),
-        supabase.from('credential_requirement_reviews')
-          .select('credential_id,requirement_id,result,reviewed_at')
-          .eq('user_id',user.id)
+        supabase.from('credential_verifications')
+          .select('credential_id,result,reasons,reviewed_at,extracted_expiration_date')
           .order('reviewed_at',{ascending:false}),
         supabase.from('credential_override_requests')
           .select('credential_id,requirement_id,organization_id,status,exemption_expires_date')
@@ -72,9 +71,13 @@ export default function Home(){
     [creds]
   );
 
-  function requirementStatus(req:any){
+  function requirementRow(req:any){
     const rows=complianceByOrg[req.organization_id]||[];
-    return rows.find((row:any)=>row.requirement_id===req.id)?.status || 'missing';
+    return rows.find((row:any)=>row.requirement_id===req.id) || null;
+  }
+
+  function requirementStatus(req:any){
+    return requirementRow(req)?.status || 'missing';
   }
 
   function requirementMet(req:any){
@@ -82,14 +85,13 @@ export default function Home(){
   }
 
   function credentialStatus(item:any){
-    const itemReviews=reviews.filter((r:any)=>r.credential_id===item.id);
-    const hasFailure=itemReviews.some((r:any)=>['does_not_meet_requirement','wrong_credential_type','unreadable'].includes(r.result));
-    const hasApproval=itemReviews.some((r:any)=>r.result==='meets_requirement');
+    const verification=reviews.find((r:any)=>r.credential_id===item.id);
 
     if(!item.document_path) return {label:'Supporting Document Required',cls:'red'};
-    if(hasFailure) return {label:'Does Not Meet',cls:'red'};
-    if(hasApproval) return {label:'Approved',cls:'green'};
-    return {label:'Pending',cls:'amber'};
+    if(!verification || ['pending','needs_human_review'].includes(verification.result)) return {label:'Pending',cls:'amber'};
+    if(verification.result==='verified') return {label:'Verified',cls:'green'};
+    if(verification.result==='expired') return {label:'Expired',cls:'red'};
+    return {label:'Does Not Meet',cls:'red'};
   }
 
   if(loading) return <div className="shell">Loading ActiveClear…</div>;
@@ -226,8 +228,11 @@ export default function Home(){
                   {reqs.length===0 ? (
                     <div className="notice">Requirements have not been configured for this organization yet.</div>
                   ) : reqs.map((req:any)=>{
-                    const status=requirementStatus(req);
-                    const label=status==='met'?'Met':status==='pending'?'Pending':status==='does_not_meet'?'Does Not Meet':'Missing';
+                    const row=requirementRow(req);
+                    const status=row?.status || 'missing';
+                    const label=row?.exemption_id
+                      ? 'Special Approval'
+                      : status==='met'?'Met':status==='pending'?'Pending':status==='does_not_meet'?'Does Not Meet':status==='supporting_document_required'?'Supporting Document Required':'Missing';
                     const cls=status==='met'?'green':status==='pending'?'amber':'red';
                     return (
                       <div key={req.id} className="item">
