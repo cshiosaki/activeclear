@@ -40,7 +40,7 @@ export default function Organizations(){
     const [{data:o},{data:m},{data:c},{data:r},{data:roleData},{data:a},{data:reviewData},{data:exemptionData}] = await Promise.all([
       supabase.rpc('list_active_organization_directory'),
       supabase.from('organization_memberships').select('*').eq('user_id',id).eq('status','active'),
-      supabase.from('credentials').select('id,credential_type_id,expires_date,status,document_path'),
+      supabase.from('credentials').select('id,credential_type_id,issuing_body,credential_number,issued_date,expires_date,status,document_path,credential_types(name)'),
       supabase.from('organization_requirements')
         .select('id,organization_id,name,description,season,requirement_status,source_document_path,source_document_url,requires_acknowledgment,requirement_credential_types(credential_type_id),requirement_roles(role_id)')
         .eq('active',true)
@@ -310,6 +310,17 @@ export default function Organizations(){
                         <strong>{req.name}</strong>
                         {req.description && <div className="muted">{req.description}</div>}
                         {req.season && <div className="muted">Season: {req.season}</div>}
+
+                        {credential && (
+                          <div className="muted" style={{marginTop:6,lineHeight:1.45}}>
+                            {credential.issuing_body && <div>Issuer: {credential.issuing_body}</div>}
+                            {credential.credential_number && <div>Credential #: {credential.credential_number}</div>}
+                            {credential.issued_date && <div>Issued: {credential.issued_date}</div>}
+                            {credential.expires_date
+                              ? <div>Expires: {credential.expires_date}</div>
+                              : <div>No expiration date on file</div>}
+                          </div>
+                        )}
 
                         {!met && !req.requires_acknowledgment && (
                           <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:10}}>
