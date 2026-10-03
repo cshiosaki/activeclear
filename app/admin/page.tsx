@@ -101,38 +101,74 @@ export default function ActiveClearAdmin(){
     <p className="muted">Fast review of credentials that need a master ActiveClear decision.</p>
     {msg&&<div className="notice" style={{marginTop:12}}>{msg}</div>}
 
-    <div className="grid four" style={{marginTop:22}}>
-      <button className="card" onClick={()=>setFilter('needs_review')} style={{textAlign:'left',cursor:'pointer'}}><div className="muted">Needs review</div><div className="metric">{counts.needs}</div></button>
-      <button className="card" onClick={()=>setFilter('pending')} style={{textAlign:'left',cursor:'pointer'}}><div className="muted">Pending</div><div className="metric">{counts.pending}</div></button>
-      <button className="card" onClick={()=>setFilter('verified_today')} style={{textAlign:'left',cursor:'pointer'}}><div className="muted">Verified today</div><div className="metric">{counts.verified}</div></button>
-      <button className="card" onClick={()=>setFilter('failed_today')} style={{textAlign:'left',cursor:'pointer'}}><div className="muted">Failed today</div><div className="metric">{counts.failed}</div></button>
-    </div>
-
-    <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:20,alignItems:'center'}}>
-      {([['needs_review','Needs Review'],['pending','Pending'],['verified_today','Verified Today'],['failed_today','Failed Today'],['all','All']] as Array<[Filter,string]>).map(([v,t])=>
-        <button key={v} className={'btn '+(filter===v?'green':'secondary')} onClick={()=>setFilter(v)}>{t}</button>
+    <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:18,alignItems:'center'}}>
+      {([
+        ['needs_review','Needs Review',counts.needs],
+        ['pending','Pending',counts.pending],
+        ['verified_today','Verified Today',counts.verified],
+        ['failed_today','Failed Today',counts.failed],
+        ['all','All',rows.length]
+      ] as Array<[Filter,string,number]>).map(([v,t,count])=>
+        <button
+          key={v}
+          className={'btn '+(filter===v?'green':'secondary')}
+          onClick={()=>setFilter(v)}
+          style={{padding:'8px 12px',minHeight:36}}
+        >
+          {t} <span style={{opacity:.75}}>({count})</span>
+        </button>
       )}
-      <input placeholder="Search name or credential" value={search} onChange={e=>setSearch(e.target.value)} style={{marginLeft:'auto',minWidth:260}}/>
+      <input
+        placeholder="Search name, credential, issuer or number"
+        value={search}
+        onChange={e=>setSearch(e.target.value)}
+        style={{marginLeft:'auto',minWidth:320,height:38}}
+      />
     </div>
 
-    <div className="list" style={{marginTop:18}}>
-      {filtered.length===0?<section className="card"><p className="muted">No submissions in this view.</p></section>:filtered.map(item=>{
+    <div style={{marginTop:14,border:'1px solid #dfe6e1',borderRadius:14,overflow:'hidden',background:'#fff'}}>
+      {filtered.length===0?<div style={{padding:18}}><p className="muted" style={{margin:0}}>No submissions in this view.</p></div>:filtered.map(item=>{
         const open=openId===item.credential_id;
         const url=signedUrls[item.credential_id];
         const reasons=Array.isArray(item.reasons)?item.reasons:[];
-        return <section className="card" key={item.credential_id} style={{padding:0,overflow:'hidden'}}>
-          <div className="item" style={{border:0,borderRadius:0,alignItems:'flex-start'}}>
-            <div>
-              <div style={{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}}><strong style={{fontSize:18}}>{item.person_name||'Unknown user'}</strong><span className={'status '+cls(item.result)}>{label(item.result)}</span></div>
-              <div style={{fontWeight:700,marginTop:4}}>{item.credential_type}</div>
-              <div className="muted">{[item.issuing_body,item.credential_number].filter(Boolean).join(' · ')||'No issuer/number extracted'}</div>
-              <div className="muted">{item.issued_date?'Issued '+item.issued_date:'Issue date not shown'} · {item.expires_date?'Expires '+item.expires_date:'No expiration date on file'}</div>
-              <div className="muted" style={{fontSize:12,marginTop:4}}>Submitted {new Date(item.submitted_at).toLocaleString()}</div>
+        return <section key={item.credential_id} style={{borderBottom:'1px solid #e7ece8'}}>
+          <div
+            style={{
+              display:'grid',
+              gridTemplateColumns:'minmax(150px,1.15fr) minmax(170px,1.25fr) minmax(150px,1.2fr) 150px 145px 270px',
+              gap:12,
+              alignItems:'center',
+              padding:'10px 14px',
+              minHeight:58
+            }}
+          >
+            <div style={{minWidth:0}}>
+              <strong style={{fontSize:15,display:'block',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{item.person_name||'Unknown user'}</strong>
+              <span className={'status '+cls(item.result)} style={{fontSize:11,padding:'3px 8px'}}>{label(item.result)}</span>
             </div>
-            <div style={{display:'flex',gap:8,flexWrap:'wrap',justifyContent:'flex-end'}}>
-              {item.document_path&&<button className="btn secondary" onClick={()=>openDocument(item)}>{open?'Close':'Review'}</button>}
-              <button className="btn green" disabled={busyId===item.credential_id} onClick={()=>decide(item,'verified')}>Verify</button>
-              <button className="btn" disabled={busyId===item.credential_id} onClick={()=>decide(item,'does_not_meet')} style={{background:'#fde7e7',color:'#9a2626'}}>Does Not Meet</button>
+
+            <div style={{minWidth:0}}>
+              <div style={{fontWeight:700,fontSize:14,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{item.credential_type}</div>
+              <div className="muted" style={{fontSize:12,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{item.issuing_body||'Issuer not provided'}</div>
+            </div>
+
+            <div style={{minWidth:0}}>
+              <div style={{fontSize:13,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{item.credential_number||'No credential #'}</div>
+              <div className="muted" style={{fontSize:12}}>{item.issued_date||'—'} → {item.expires_date||'—'}</div>
+            </div>
+
+            <div className="muted" style={{fontSize:12}}>
+              {new Date(item.submitted_at).toLocaleDateString()}<br/>
+              {new Date(item.submitted_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}
+            </div>
+
+            <div>
+              {item.document_path&&<button className="btn secondary" onClick={()=>openDocument(item)} style={{padding:'7px 11px',minHeight:34}}>{open?'Close':'Review'}</button>}
+            </div>
+
+            <div style={{display:'flex',gap:6,justifyContent:'flex-end'}}>
+              <button className="btn green" disabled={busyId===item.credential_id} onClick={()=>decide(item,'verified')} style={{padding:'7px 10px',minHeight:34}}>Verify</button>
+              <button className="btn" disabled={busyId===item.credential_id} onClick={()=>decide(item,'does_not_meet')} style={{background:'#fde7e7',color:'#9a2626',padding:'7px 10px',minHeight:34}}>Does Not Meet</button>
             </div>
           </div>
 
