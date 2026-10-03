@@ -311,6 +311,25 @@ export default function Credentials() {
     await load();
   }
 
+  async function requestHumanReview(item:any){
+    setBusy(true);
+    setMsg('');
+
+    const {error}=await supabase.rpc('request_activeclear_review',{
+      p_credential_id:item.id
+    });
+
+    if(error){
+      setMsg(error.message);
+      setBusy(false);
+      return;
+    }
+
+    setMsg('Human review requested. This credential is now in the ActiveClear Admin review queue.');
+    await load();
+    setBusy(false);
+  }
+
   async function deleteCredential(item: any) {
     const ok = window.confirm(
       `Delete ${item.credential_types?.name || 'this credential'}? This cannot be undone.`
@@ -377,6 +396,11 @@ export default function Credentials() {
                               : 'Pending';
                       const cls = label==='Verified' ? 'green' : label==='Pending' ? 'amber' : 'red';
 
+                      const canRequestReview = !!item.document_path && verification?.result!=='verified';
+                      const reviewAlreadyRequested = verification?.result==='needs_human_review' &&
+                        Array.isArray(verification?.reasons) &&
+                        verification.reasons.includes('Manual review requested by credential owner.');
+
                       return <>
                         <span className={'status ' + cls}>{label}</span>
                         {isFail && verification?.reasons?.length>0 && (
@@ -388,6 +412,16 @@ export default function Credentials() {
                           <div className="muted" style={{maxWidth:300,textAlign:'right',fontSize:12,lineHeight:1.35}}>
                             This is the ActiveClear master result. An organization can only accept it through a Special Approval exception.
                           </div>
+                        )}
+                        {canRequestReview && (
+                          <button
+                            className="btn secondary"
+                            type="button"
+                            disabled={busy || reviewAlreadyRequested}
+                            onClick={()=>requestHumanReview(item)}
+                          >
+                            {reviewAlreadyRequested ? 'Review Requested' : 'Request Review'}
+                          </button>
                         )}
                       </>;
                     })()}
