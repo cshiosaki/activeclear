@@ -302,7 +302,7 @@ export default function Organizations(){
                     const credential=credentialForRequirement(req);
                     const label=row?.exemption_id
                       ? 'Special Approval'
-                      : status==='met'?'Met':status==='pending'?'Pending':status==='does_not_meet'?'Does Not Meet':status==='supporting_document_required'?'Supporting Document Required':'Missing';
+                      : status==='met'?'Verified':status==='pending'?'Pending':status==='does_not_meet'?'Does Not Meet':status==='supporting_document_required'?'Supporting Document Required':'Missing';
                     const cls=status==='met'?'green':status==='pending'?'amber':'red';
 
                     return <div className="item" key={req.id}>
