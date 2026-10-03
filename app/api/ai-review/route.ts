@@ -47,14 +47,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'AI review is not configured.' }, { status: 503 });
   }
 
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY;
-  if (!serviceKey) {
-    return NextResponse.json(
-      { error: 'Central credential verification is not configured on the server.' },
-      { status: 503 }
-    );
-  }
-
   const { credentialId } = await req.json().catch(() => ({}));
   if (!credentialId) {
     return NextResponse.json({ error: 'credentialId is required' }, { status: 400 });
@@ -66,11 +58,6 @@ export async function POST(req: NextRequest) {
     { global: { headers: { Authorization: authorization } } }
   );
 
-  const admin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    serviceKey,
-    { auth: { persistSession: false, autoRefreshToken: false } }
-  );
 
   const { data: auth, error: authError } = await supabase.auth.getUser();
   if (authError || !auth.user) {
@@ -222,11 +209,19 @@ export async function POST(req: NextRequest) {
     updated_at: reviewedAt,
   };
 
-  const { data, error } = await admin
-    .from('credential_verifications')
-    .upsert(row, { onConflict: 'credential_id' })
-    .select('*')
-    .single();
+  const { data, error } = await supabase.rpc('save_my_credential_verification', {
+    p_credential_id: credential.id,
+    p_result: row.result,
+    p_confidence: row.confidence,
+    p_extracted_name: row.extracted_name,
+    p_extracted_issuer: row.extracted_issuer,
+    p_extracted_credential_type: row.extracted_credential_type,
+    p_extracted_credential_number: row.extracted_credential_number,
+    p_extracted_issue_date: row.extracted_issue_date,
+    p_extracted_expiration_date: row.extracted_expiration_date,
+    p_reasons: row.reasons,
+    p_model: row.model,
+  });
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });
