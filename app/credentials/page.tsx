@@ -72,6 +72,23 @@ export default function Credentials() {
 
       setUid(user.id);
       await load();
+
+      const params = new URLSearchParams(window.location.search);
+      const editId = params.get('edit');
+      const requestedType = params.get('type');
+
+      if (editId) {
+        const { data: item } = await supabase
+          .from('credentials')
+          .select('*,credential_types(name,renewal_url)')
+          .eq('id', editId)
+          .maybeSingle();
+
+        if (item) startEdit(item);
+      } else if (requestedType) {
+        setForm((current:any)=>({...current,credential_type_id:requestedType}));
+        window.setTimeout(()=>window.scrollTo({top:0,behavior:'smooth'}),50);
+      }
     })();
   }, [router]);
 
