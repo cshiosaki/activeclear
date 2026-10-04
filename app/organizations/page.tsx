@@ -29,6 +29,7 @@ export default function Organizations(){
   const [selectedRole,setSelectedRole]=useState<Record<string,string>>({});
   const [registrationDetails,setRegistrationDetails]=useState<Record<string,{division:string,level:string,group:string,season:string}>>({});
   const [registrationLabels,setRegistrationLabels]=useState<Record<string,{division_label:string,level_label:string,group_label:string}>>({});
+  const [registrationSeasons,setRegistrationSeasons]=useState<Record<string,any[]>>({});
   const [registeringOrg,setRegisteringOrg]=useState<string|null>(null);
   const [credentials,setCredentials]=useState<any[]>([]);
   const [reviews,setReviews]=useState<any[]>([]);
@@ -60,12 +61,19 @@ export default function Organizations(){
     ]);
 
     setOrgs(o||[]);
-    const labelEntries=await Promise.all((o||[]).map(async (org:any)=>{
-      const {data}=await supabase.rpc('get_organization_registration_labels',{p_organization_id:org.id});
-      const row=data?.[0] || {division_label:'Division',level_label:'Level',group_label:'Team / Group'};
-      return [org.id,row] as const;
-    }));
+    const [labelEntries,seasonEntries]=await Promise.all([
+      Promise.all((o||[]).map(async (org:any)=>{
+        const {data}=await supabase.rpc('get_organization_registration_labels',{p_organization_id:org.id});
+        const row=data?.[0] || {division_label:'Division',level_label:'Level',group_label:'Team / Group'};
+        return [org.id,row] as const;
+      })),
+      Promise.all((o||[]).map(async (org:any)=>{
+        const {data}=await supabase.rpc('get_organization_registration_seasons',{p_organization_id:org.id});
+        return [org.id,data||[]] as const;
+      }))
+    ]);
     setRegistrationLabels(Object.fromEntries(labelEntries));
+    setRegistrationSeasons(Object.fromEntries(seasonEntries));
     setMemberships(m||[]);
     setCredentials(c||[]);
     setReviews(reviewData||[]);
@@ -300,7 +308,9 @@ export default function Organizations(){
 
           {!m && registeringOrg===o.id && (() => {
             const labels=registrationLabels[o.id] || {division_label:'Division',level_label:'Level',group_label:'Team / Group'};
-            const details=registrationDetails[o.id] || {division:'',level:'',group:'',season:''};
+            const seasons=registrationSeasons[o.id] || [];
+            const currentSeason=seasons.find((s:any)=>s.is_current);
+            const details=registrationDetails[o.id] || {division:'',level:'',group:'',season:currentSeason?.name||''};
             const update=(field:'division'|'level'|'group'|'season',value:string)=>
               setRegistrationDetails({...registrationDetails,[o.id]:{...details,[field]:value}});
             return <div style={{padding:'0 16px 16px'}}>
@@ -334,7 +344,10 @@ export default function Organizations(){
                 </div>
                 <div className="field">
                   <label>Season</label>
-                  <input placeholder="Example: Spring 2027" value={details.season} onChange={e=>update('season',e.target.value)}/>
+                  {seasons.length>0 ? <select value={details.season || currentSeason?.name || ''} onChange={e=>update('season',e.target.value)}>
+                    <option value="">Select season</option>
+                    {seasons.map((s:any)=><option key={s.id} value={s.name}>{s.name}{s.is_current?' · Current':''}</option>)}
+                  </select> : <input placeholder="Example: Spring 2027" value={details.season} onChange={e=>update('season',e.target.value)}/>}
                 </div>
               </div>
               <div style={{display:'flex',gap:8,alignItems:'center',marginTop:14,flexWrap:'wrap'}}>
