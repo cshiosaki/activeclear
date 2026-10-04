@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import AppShell from '@/components/AppShell';
 import { supabase } from '@/lib/supabase';
 
-type Tab='people'|'teams'|'setup';
+type Tab='people'|'teams'|'alerts'|'setup';
 
 export default function OrganizationDashboard(){
   const router=useRouter();
@@ -21,12 +21,14 @@ export default function OrganizationDashboard(){
   const [groupFilter,setGroupFilter]=useState('');
   const [roleFilter,setRoleFilter]=useState('');
   const [statusFilter,setStatusFilter]=useState('all');
+  const [alerts,setAlerts]=useState<any[]>([]);
+  const [reminders,setReminders]=useState<any[]>([]);
 
   useEffect(()=>{
     const params=new URLSearchParams(window.location.search);
     setOrgId(params.get('org')||'');
     const qTab=params.get('tab');
-    if(qTab==='teams'||qTab==='setup'||qTab==='people') setTab(qTab);
+    if(qTab==='teams'||qTab==='alerts'||qTab==='setup'||qTab==='people') setTab(qTab);
   },[]);
 
   useEffect(()=>{
@@ -43,13 +45,17 @@ export default function OrganizationDashboard(){
 
       if(!admin){router.replace('/organization');return;}
 
-      const [{data:o},{data:r},{data:reqs},{data:rosterData},{data:groupData}] = await Promise.all([
+      const [{data:o},{data:r},{data:reqs},{data:rosterData},{data:groupData},{data:alertData},{data:reminderData}] = await Promise.all([
         supabase.from('organizations').select('*').eq('id',orgId).maybeSingle(),
         supabase.from('organization_roles').select('*').eq('organization_id',orgId).eq('is_active',true).order('name'),
         supabase.from('organization_requirements').select('id,name').eq('organization_id',orgId).eq('active',true).order('name'),
         supabase.rpc('list_organization_roster_detailed_for_admin',{p_organization_id:orgId}),
         supabase.from('organization_groups').select('*').eq('organization_id',orgId).eq('is_active',true)
-          .order('division_name').order('level_name').order('group_name')
+          .order('division_name').order('level_name').order('group_name'),
+        supabase.from('compliance_notification_queue').select('*').eq('organization_id',orgId)
+          .order('created_at',{ascending:false}).limit(50),
+        supabase.from('credential_reminder_queue').select('*').eq('organization_id',orgId)
+          .order('created_at',{ascending:false}).limit(50)
       ]);
 
       setOrg(o);
@@ -57,6 +63,8 @@ export default function OrganizationDashboard(){
       setRequirements(reqs||[]);
       setRoster(rosterData||[]);
       setGroups(groupData||[]);
+      setAlerts(alertData||[]);
+      setReminders(reminderData||[]);
       setLoading(false);
     })();
   },[orgId,router]);
@@ -154,6 +162,7 @@ export default function OrganizationDashboard(){
     <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:18}}>
       <button className={'btn '+(tab==='people'?'green':'secondary')} onClick={()=>changeTab('people')}>People</button>
       <button className={'btn '+(tab==='teams'?'green':'secondary')} onClick={()=>changeTab('teams')}>{groupLabel}s</button>
+      <button className={'btn '+(tab==='alerts'?'green':'secondary')} onClick={()=>changeTab('alerts')}>Alerts{(alerts.filter((a:any)=>a.status==='pending').length+reminders.filter((a:any)=>a.status==='pending').length)>0 ? ` (${alerts.filter((a:any)=>a.status==='pending').length+reminders.filter((a:any)=>a.status==='pending').length})` : ''}</button>
       <button className={'btn '+(tab==='setup'?'green':'secondary')} onClick={()=>changeTab('setup')}>Organization setup</button>
     </div>
 
@@ -282,6 +291,64 @@ export default function OrganizationDashboard(){
             </div>
           </div>)}
           {groups.length===0 && <div className="muted">No {groupLabel.toLowerCase()}s created yet. They will normally be created as people register.</div>}
+        </div>
+      </section>
+    </>}
+
+    {tab==='alerts' && <>
+      <section className="card" style={{marginTop:18}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:12,flexWrap:'wrap'}}>
+          <div>
+            <h2 style={{margin:'0 0 4px'}}>Organization alerts</h2>
+            <div className="muted">Compliance changes, new team/group entries, ActiveClear review results, and credential expiration reminders.</div>
+          </div>
+          <a className="btn secondary" href={`/organization-profile?org=${orgId}`}>Notification settings</a>
+        </div>
+
+        <div className="list" style={{marginTop:16}}>
+          {[...alerts.map((a:any)=>({...a,_kind:'alert'})),...reminders.map((a:any)=>({...a,_kind:'reminder'}))]
+            .sort((a:any,b:any)=>new Date(b.created_at).getTime()-new Date(a.created_at).getTime())
+            .map((item:any)=>{
+              const payload=item.payload||{};
+              let title='';
+              let body='';
+              if(item._kind==='reminder'){
+                title=`Credential expires in ${item.reminder_days} days`;
+                body=`Expiration: ${item.expires_date}`;
+              }else if(item.event_type==='became_compliant'){
+                title=`${payload.person_name||'Member'} became compliant`;
+                body='All required items are currently satisfied.';
+              }else if(item.event_type==='became_noncompliant'){
+                title=`${payload.person_name||'Member'} is no longer compliant`;
+                body='One or more required items now need attention.';
+              }else if(item.event_type==='new_group_needs_review'){
+                title=`New ${groupLabel.toLowerCase()} needs review`;
+                body=[payload.division_name,payload.level_name,payload.group_name,payload.season].filter(Boolean).join(' · ');
+              }else if(item.event_type==='activeclear_review_resolved'){
+                title='ActiveClear review resolved';
+                body=[payload.person_name,payload.requirement_name,payload.resolution_note].filter(Boolean).join(' · ');
+              }else if(item.event_type==='activeclear_review_dismissed'){
+                title='ActiveClear review dismissed';
+                body=[payload.person_name,payload.requirement_name,payload.resolution_note].filter(Boolean).join(' · ');
+              }else{
+                title=(item.event_type||'Notification').replaceAll('_',' ');
+                body='';
+              }
+              return <div className="item" key={item._kind+item.id} style={{alignItems:'flex-start'}}>
+                <div>
+                  <strong>{title}</strong>
+                  {body&&<div className="muted small" style={{marginTop:3}}>{body}</div>}
+                  <div className="muted small" style={{marginTop:5}}>{new Date(item.created_at).toLocaleString()}</div>
+                </div>
+                <span className={'status '+(item.status==='sent'?'green':'amber')}>{item.status==='sent'?'Sent':'Pending'}</span>
+              </div>;
+            })}
+          {alerts.length===0&&reminders.length===0&&<div className="muted">No notification activity yet.</div>}
+        </div>
+
+        <div className="notice" style={{marginTop:16}}>
+          <strong>Automatic checks are active.</strong>
+          <div className="muted small" style={{marginTop:4}}>ActiveClear checks compliance changes hourly and queues credential-expiration reminders daily based on the organization’s selected reminder days.</div>
         </div>
       </section>
     </>}
