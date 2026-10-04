@@ -21,6 +21,7 @@ export default function OrganizationMember(){
   const [msg,setMsg]=useState('');
   const [busy,setBusy]=useState(false);
   const [documentUrls,setDocumentUrls]=useState<Record<string,string>>({});
+  const [privateInfo,setPrivateInfo]=useState<any>(null);
 
   useEffect(()=>{
     const params=new URLSearchParams(window.location.search);
@@ -37,13 +38,14 @@ export default function OrganizationMember(){
       .select('organization_id').eq('organization_id',orgId).eq('user_id',user.id).maybeSingle();
     if(!admin){router.replace('/organization');return;}
 
-    const [{data:o},{data:d,error:detailError},{data:r},{data:g},{data:n}] = await Promise.all([
+    const [{data:o},{data:d,error:detailError},{data:r},{data:g},{data:n},{data:pi}] = await Promise.all([
       supabase.from('organizations').select('*').eq('id',orgId).maybeSingle(),
       supabase.rpc('get_organization_member_detail_for_admin',{p_organization_id:orgId,p_user_id:userId}),
       supabase.from('organization_roles').select('id,name').eq('organization_id',orgId).eq('is_active',true).order('name'),
       supabase.from('organization_groups').select('*').eq('organization_id',orgId).eq('is_active',true)
         .order('division_name').order('level_name').order('group_name'),
-      supabase.rpc('get_organization_member_notes_for_admin',{p_organization_id:orgId,p_user_id:userId})
+      supabase.rpc('get_organization_member_notes_for_admin',{p_organization_id:orgId,p_user_id:userId}),
+      supabase.rpc('get_organization_member_private_info_for_admin',{p_organization_id:orgId,p_user_id:userId})
     ]);
 
     if(detailError){setMsg(detailError.message);return;}
@@ -52,6 +54,7 @@ export default function OrganizationMember(){
     setRoles(r||[]);
     setGroups(g||[]);
     setNotes(n||[]);
+    setPrivateInfo(pi||null);
     setRoleId(d?.membership?.role_id || '');
     setGroupIds((d?.groups||[]).map((x:any)=>x.id));
   }
@@ -291,6 +294,58 @@ export default function OrganizationMember(){
       </div>
     </section>
 
+
+
+    <section className="card" style={{marginTop:18}}>
+      <details>
+        <summary style={{cursor:'pointer',fontWeight:800,fontSize:20}}>Personal, medical & emergency information</summary>
+        <div className="muted small" style={{marginTop:6}}>
+          Organization-only information for member safety and emergency response.
+        </div>
+
+        <div className="detailGrid" style={{marginTop:16}}>
+          <div><span className="muted">Phone</span><br/>{privateInfo?.profile?.phone || '—'}</div>
+          <div><span className="muted">Date of birth</span><br/>{privateInfo?.profile?.date_of_birth || '—'}</div>
+          <div><span className="muted">Email</span><br/>{privateInfo?.profile?.email || '—'}</div>
+          <div style={{gridColumn:'1 / -1'}}>
+            <span className="muted">Address</span><br/>
+            {[privateInfo?.profile?.address_line1,privateInfo?.profile?.address_line2,privateInfo?.profile?.city,privateInfo?.profile?.state,privateInfo?.profile?.postal_code].filter(Boolean).join(', ') || '—'}
+          </div>
+        </div>
+
+        <h3 style={{marginBottom:8}}>Emergency contacts</h3>
+        <div className="list">
+          {(privateInfo?.emergency_contacts||[]).map((ec:any)=><div className="item" key={ec.id} style={{padding:12}}>
+            <div>
+              <strong>{ec.name}</strong>{ec.is_primary && <span className="status green" style={{marginLeft:8}}>Primary</span>}
+              <div className="muted small">{ec.relationship || 'Relationship not provided'}</div>
+            </div>
+            <div className="small" style={{textAlign:'right'}}>
+              <div>{ec.phone}</div>
+              {ec.alternate_phone && <div className="muted">{ec.alternate_phone}</div>}
+            </div>
+          </div>)}
+          {(privateInfo?.emergency_contacts||[]).length===0 && <div className="muted">No emergency contact on file.</div>}
+        </div>
+
+        <h3 style={{marginBottom:8}}>Medical information</h3>
+        {privateInfo?.medical ? <div className="detailGrid">
+          <div><span className="muted">Medical conditions</span><br/>{privateInfo.medical.medical_conditions || 'None listed'}</div>
+          <div><span className="muted">Allergies</span><br/>{privateInfo.medical.allergies || 'None listed'}</div>
+          <div><span className="muted">Medications</span><br/>{privateInfo.medical.medications || 'None listed'}</div>
+          <div><span className="muted">Physical limitations</span><br/>{privateInfo.medical.physical_limitations || 'None listed'}</div>
+          <div style={{gridColumn:'1 / -1'}}><span className="muted">Emergency notes</span><br/>{privateInfo.medical.emergency_notes || 'None listed'}</div>
+        </div> : <div className="muted">No medical information on file.</div>}
+
+        <h3 style={{marginBottom:8}}>Insurance</h3>
+        {privateInfo?.medical ? <div className="detailGrid">
+          <div><span className="muted">Insurance company</span><br/>{privateInfo.medical.insurance_company || '—'}</div>
+          <div><span className="muted">Member ID</span><br/>{privateInfo.medical.insurance_member_id || '—'}</div>
+          <div><span className="muted">Group #</span><br/>{privateInfo.medical.insurance_group_number || '—'}</div>
+          <div><span className="muted">Insurance phone</span><br/>{privateInfo.medical.insurance_phone || '—'}</div>
+        </div> : <div className="muted">No insurance information on file.</div>}
+      </details>
+    </section>
 
     <section className="card" style={{marginTop:18}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:12,flexWrap:'wrap'}}>
