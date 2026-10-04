@@ -1,0 +1,263 @@
+'use client';
+
+import { useEffect,useMemo,useState } from 'react';
+import { useRouter } from 'next/navigation';
+import AppShell from '@/components/AppShell';
+import { supabase } from '@/lib/supabase';
+
+export default function OrganizationMember(){
+  const router=useRouter();
+  const [orgId,setOrgId]=useState('');
+  const [userId,setUserId]=useState('');
+  const [org,setOrg]=useState<any>(null);
+  const [detail,setDetail]=useState<any>(null);
+  const [roles,setRoles]=useState<any[]>([]);
+  const [groups,setGroups]=useState<any[]>([]);
+  const [editAssignment,setEditAssignment]=useState(false);
+  const [roleId,setRoleId]=useState('');
+  const [groupIds,setGroupIds]=useState<string[]>([]);
+  const [msg,setMsg]=useState('');
+  const [busy,setBusy]=useState(false);
+
+  useEffect(()=>{
+    const params=new URLSearchParams(window.location.search);
+    setOrgId(params.get('org')||'');
+    setUserId(params.get('user')||'');
+  },[]);
+
+  async function load(){
+    if(!orgId||!userId)return;
+    const {data:{user}}=await supabase.auth.getUser();
+    if(!user){router.replace('/login');return;}
+
+    const {data:admin}=await supabase.from('organization_admins')
+      .select('organization_id').eq('organization_id',orgId).eq('user_id',user.id).maybeSingle();
+    if(!admin){router.replace('/organization');return;}
+
+    const [{data:o},{data:d,error:detailError},{data:r},{data:g}] = await Promise.all([
+      supabase.from('organizations').select('*').eq('id',orgId).maybeSingle(),
+      supabase.rpc('get_organization_member_detail_for_admin',{p_organization_id:orgId,p_user_id:userId}),
+      supabase.from('organization_roles').select('id,name').eq('organization_id',orgId).eq('is_active',true).order('name'),
+      supabase.from('organization_groups').select('*').eq('organization_id',orgId).eq('is_active',true)
+        .order('division_name').order('level_name').order('group_name')
+    ]);
+
+    if(detailError){setMsg(detailError.message);return;}
+    setOrg(o);
+    setDetail(d);
+    setRoles(r||[]);
+    setGroups(g||[]);
+    setRoleId(d?.membership?.role_id || '');
+    setGroupIds((d?.groups||[]).map((x:any)=>x.id));
+  }
+
+  useEffect(()=>{load()},[orgId,userId]);
+
+  const requirements=detail?.requirements||[];
+  const met=requirements.filter((r:any)=>r.status==='met').length;
+  const pending=requirements.filter((r:any)=>r.status==='pending').length;
+  const needs=requirements.filter((r:any)=>['missing','does_not_meet','supporting_document_required'].includes(r.status)).length;
+  const expiring=requirements.filter((r:any)=>{
+    if(r.status!=='met'||!r.effective_expiration_date)return false;
+    const now=new Date();
+    const exp=new Date(r.effective_expiration_date+'T00:00:00');
+    const days=Math.ceil((exp.getTime()-now.getTime())/86400000);
+    return days>=0 && days<=60;
+  }).length;
+
+  const isCompliant=requirements.length>0 && needs===0 && pending===0;
+  const fullName=[detail?.person?.first_name,detail?.person?.last_name].filter(Boolean).join(' ') || detail?.person?.email || 'Member';
+  const groupLabel=org?.group_label || 'Team / Group';
+  const divisionLabel=org?.division_label || 'Division';
+  const levelLabel=org?.level_label || 'Level';
+
+  async function saveAssignment(){
+    setBusy(true);setMsg('');
+    const {error}=await supabase.rpc('update_organization_member_assignment_for_admin',{
+      p_organization_id:orgId,
+      p_user_id:userId,
+      p_role_id:roleId||null,
+      p_group_ids:groupIds
+    });
+    if(error)setMsg(error.message);
+    else{
+      setMsg('Role and team assignment updated.');
+      setEditAssignment(false);
+      await load();
+    }
+    setBusy(false);
+  }
+
+  async function requestFollowup(req:any){
+    const note=window.prompt('What should be corrected or reviewed?');
+    if(note===null)return;
+    const {error}=await supabase.rpc('log_organization_member_followup_for_admin',{
+      p_organization_id:orgId,
+      p_user_id:userId,
+      p_requirement_id:req.requirement_id,
+      p_credential_id:req.credential_id||null,
+      p_note:note.trim()||'Manager requested review of this requirement.'
+    });
+    if(error)setMsg(error.message);
+    else{
+      setMsg('Follow-up request added to this member’s history.');
+      await load();
+    }
+  }
+
+  function statusLabel(status:string){
+    if(status==='met')return 'Met';
+    if(status==='pending')return 'Pending review';
+    if(status==='does_not_meet')return 'Does not meet';
+    if(status==='supporting_document_required')return 'Document required';
+    return 'Missing';
+  }
+
+  function statusClass(status:string){
+    if(status==='met')return 'green';
+    if(status==='pending')return 'amber';
+    return 'red';
+  }
+
+  if(!org||!detail)return <div className="shell">{msg || 'Loading member…'}</div>;
+
+  return <AppShell>
+    <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:16,flexWrap:'wrap'}}>
+      <div>
+        <div className="eyebrow">{org.name} · Member detail</div>
+        <h1 style={{marginBottom:6}}>{fullName}</h1>
+        <div className="muted">{detail.person?.email}{detail.person?.phone ? ' · '+detail.person.phone : ''}</div>
+      </div>
+      <a className="btn secondary" href={`/organization-dashboard?org=${orgId}&tab=people`}>Back to people</a>
+    </div>
+
+    {msg && <div className="notice" style={{marginTop:16}}>{msg}</div>}
+
+    <section className="card" style={{marginTop:20,padding:16}}>
+      <div className="summaryGrid">
+        <div><div className="muted small">Overall</div><span className={'status '+(isCompliant?'green':'red')} style={{marginTop:7}}>{isCompliant?'Compliant':'Needs attention'}</span></div>
+        <div><div className="muted small">Requirements met</div><div className="metricSmall">{met}/{requirements.length}</div></div>
+        <div><div className="muted small">Needs attention</div><div className="metricSmall">{needs}</div></div>
+        <div><div className="muted small">Pending</div><div className="metricSmall">{pending}</div></div>
+        <div><div className="muted small">Expiring ≤60 days</div><div className="metricSmall">{expiring}</div></div>
+      </div>
+    </section>
+
+    <section className="card" style={{marginTop:18}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,flexWrap:'wrap'}}>
+        <div>
+          <h2 style={{margin:'0 0 4px'}}>Organization assignment</h2>
+          <div className="muted">Role and {groupLabel.toLowerCase()} assignment for this organization.</div>
+        </div>
+        <button className="btn secondary" type="button" onClick={()=>setEditAssignment(!editAssignment)}>{editAssignment?'Cancel':'Edit assignment'}</button>
+      </div>
+
+      {!editAssignment ? <div className="assignmentGrid" style={{marginTop:16}}>
+        <div><div className="muted small">Role</div><strong>{detail.membership?.role || 'Participant'}</strong></div>
+        <div><div className="muted small">{groupLabel}</div>
+          {(detail.groups||[]).length ? (detail.groups||[]).map((g:any)=><div key={g.id} style={{marginTop:4}}>
+            <strong>{g.group_name}</strong>
+            <div className="muted small">{[g.division_name,g.level_name,g.season].filter(Boolean).join(' · ')}</div>
+          </div>) : <span className="muted">Not assigned</span>}
+        </div>
+      </div> : <div style={{marginTop:16}}>
+        <div className="field" style={{maxWidth:420}}>
+          <label>Role</label>
+          <select value={roleId} onChange={e=>setRoleId(e.target.value)}>
+            <option value="">Participant</option>
+            {roles.map((r:any)=><option key={r.id} value={r.id}>{r.name}</option>)}
+          </select>
+        </div>
+        <div style={{marginTop:14}}>
+          <strong>{groupLabel}s</strong>
+          <div className="muted small" style={{marginTop:3}}>A person can belong to more than one group.</div>
+          <div className="list" style={{marginTop:10}}>
+            {groups.map((g:any)=><label className="item" key={g.id} style={{cursor:'pointer',padding:12}}>
+              <div>
+                <strong>{g.group_name}</strong>
+                <div className="muted small">{[g.division_name,g.level_name,g.season].filter(Boolean).join(' · ')}</div>
+              </div>
+              <input
+                type="checkbox"
+                checked={groupIds.includes(g.id)}
+                onChange={e=>setGroupIds(e.target.checked ? [...groupIds,g.id] : groupIds.filter(x=>x!==g.id))}
+                style={{width:20,height:20}}
+              />
+            </label>)}
+          </div>
+        </div>
+        <button className="btn green" type="button" onClick={saveAssignment} disabled={busy} style={{marginTop:14}}>{busy?'Saving…':'Save assignment'}</button>
+      </div>}
+    </section>
+
+    <section className="card" style={{marginTop:18}}>
+      <h2 style={{marginTop:0}}>Compliance requirements</h2>
+      <div className="list">
+        {requirements.map((req:any)=>{
+          const cred=req.credential;
+          const expiringSoon=(()=>{
+            if(req.status!=='met'||!req.effective_expiration_date)return false;
+            const days=Math.ceil((new Date(req.effective_expiration_date+'T00:00:00').getTime()-Date.now())/86400000);
+            return days>=0&&days<=60;
+          })();
+          return <div className="item" key={req.requirement_id} style={{alignItems:'flex-start'}}>
+            <div style={{minWidth:0}}>
+              <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+                <strong>{req.requirement_name}</strong>
+                <span className={'status '+statusClass(req.status)}>{statusLabel(req.status)}</span>
+                {expiringSoon && <span className="status amber">Expiring soon</span>}
+                {req.exemption_id && <span className="status green">Exemption</span>}
+              </div>
+
+              {cred ? <div className="detailGrid" style={{marginTop:10}}>
+                <div><span className="muted">Credential</span><br/>{cred.credential_type || req.requirement_name}</div>
+                <div><span className="muted">Issuer</span><br/>{cred.issuing_body || '—'}</div>
+                <div><span className="muted">Credential #</span><br/>{cred.credential_number || '—'}</div>
+                <div><span className="muted">Issued</span><br/>{cred.issued_date || '—'}</div>
+                <div><span className="muted">Expires</span><br/>{req.effective_expiration_date || cred.expires_date || 'No expiration'}</div>
+                <div><span className="muted">Review</span><br/>{cred.verification_result || req.review_result || '—'}</div>
+              </div> : <div className="muted small" style={{marginTop:8}}>No credential is currently satisfying this requirement.</div>}
+
+              {req.exemption && <div className="notice" style={{marginTop:10}}>
+                <strong>Approved exemption</strong>
+                {req.exemption.request_reason && <div className="muted small">{req.exemption.request_reason}</div>}
+                {req.exemption.exemption_expires_date && <div className="small">Expires: {req.exemption.exemption_expires_date}</div>}
+              </div>}
+
+              {cred?.reviewer_notes && <div className="muted small" style={{marginTop:8}}>Review note: {cred.reviewer_notes}</div>}
+            </div>
+
+            <button className="btn secondary" type="button" onClick={()=>requestFollowup(req)}>Request follow-up</button>
+          </div>
+        })}
+        {requirements.length===0 && <div className="muted">No requirements apply to this member’s role.</div>}
+      </div>
+    </section>
+
+    <section className="card" style={{marginTop:18}}>
+      <h2 style={{marginTop:0}}>Activity history</h2>
+      <div className="list">
+        {(detail.history||[]).map((h:any)=><div className="item" key={h.id} style={{padding:12,alignItems:'flex-start'}}>
+          <div>
+            <strong>{h.event_label || h.event_type}</strong>
+            {h.notes && <div className="muted small" style={{marginTop:3}}>{h.notes}</div>}
+          </div>
+          <div className="muted small" style={{whiteSpace:'nowrap'}}>{h.event_date ? new Date(h.event_date).toLocaleString() : ''}</div>
+        </div>)}
+        {(detail.history||[]).length===0 && <div className="muted">No organization activity has been recorded yet.</div>}
+      </div>
+    </section>
+
+    <style jsx>{`
+      .summaryGrid{display:grid;grid-template-columns:repeat(5,minmax(120px,1fr));gap:14px}
+      .metricSmall{font-size:28px;font-weight:800;margin-top:4px}
+      .assignmentGrid{display:grid;grid-template-columns:1fr 2fr;gap:22px}
+      .detailGrid{display:grid;grid-template-columns:repeat(3,minmax(130px,1fr));gap:10px 20px;font-size:13px;line-height:1.4}
+      .small{font-size:13px;line-height:1.45}
+      @media(max-width:900px){
+        .summaryGrid{grid-template-columns:1fr 1fr}
+        .assignmentGrid,.detailGrid{grid-template-columns:1fr}
+      }
+    `}</style>
+  </AppShell>;
+}
