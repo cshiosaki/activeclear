@@ -15,6 +15,11 @@ export default function OrganizationGroups(){
   const [level,setLevel]=useState('');
   const [groupName,setGroupName]=useState('');
   const [season,setSeason]=useState('');
+  const [seasonId,setSeasonId]=useState('');
+  const [seasons,setSeasons]=useState<any[]>([]);
+  const [newSeasonName,setNewSeasonName]=useState('');
+  const [newSeasonStart,setNewSeasonStart]=useState('');
+  const [newSeasonEnd,setNewSeasonEnd]=useState('');
   const [selectedGroup,setSelectedGroup]=useState<any>(null);
   const [selectedMembers,setSelectedMembers]=useState<string[]>([]);
   const [divisionLabel,setDivisionLabel]=useState('Division');
@@ -36,16 +41,19 @@ export default function OrganizationGroups(){
       .select('organization_id').eq('organization_id',orgId).eq('user_id',user.id).maybeSingle();
     if(!admin){router.replace('/organization');return;}
 
-    const [{data:o},{data:g},{data:r}] = await Promise.all([
+    const [{data:o},{data:g},{data:r},{data:s}] = await Promise.all([
       supabase.from('organizations').select('*').eq('id',orgId).maybeSingle(),
       supabase.from('organization_groups').select('*').eq('organization_id',orgId).eq('is_active',true)
         .order('division_name').order('level_name').order('group_name'),
-      supabase.rpc('list_organization_roster_for_admin',{p_organization_id:orgId})
+      supabase.rpc('list_organization_roster_for_admin',{p_organization_id:orgId}),
+      supabase.from('organization_seasons').select('*').eq('organization_id',orgId).order('start_date',{ascending:false})
     ]);
 
     setOrg(o);
     setGroups(g||[]);
     setRoster((r||[]).filter((x:any)=>x.membership_id && x.membership_status==='active'));
+    setSeasons(s||[]);
+    if(!seasonId){const current=(s||[]).find((x:any)=>x.is_current && x.is_active);if(current){setSeasonId(current.id);setSeason(current.name);}}
     setDivisionLabel(o?.division_label || 'Division');
     setLevelLabel(o?.level_label || 'Level');
     setGroupLabel(o?.group_label || 'Team / Group');
@@ -59,21 +67,59 @@ export default function OrganizationGroups(){
     e.preventDefault();
     if(!groupName.trim())return;
     setBusy(true);setMsg('');
+    const chosenSeason=seasons.find((s:any)=>s.id===seasonId);
     const {error}=await supabase.from('organization_groups').insert({
       organization_id:orgId,
       division_name:division.trim()||null,
       level_name:level.trim()||null,
       group_name:groupName.trim(),
-      season:season.trim()||null,
+      season:chosenSeason?.name || season.trim()||null,
+      season_id:chosenSeason?.id || null,
       is_active:true
     });
     if(error)setMsg(error.message);
     else{
-      setDivision('');setLevel('');setGroupName('');setSeason('');
+      setDivision('');setLevel('');setGroupName('');
+      const current=seasons.find((x:any)=>x.is_current&&x.is_active);setSeasonId(current?.id||'');setSeason(current?.name||'');
       setMsg(`${groupLabel} created.`);
       await load();
     }
     setBusy(false);
+  }
+
+  async function createSeason(){
+    if(!newSeasonName.trim())return;
+    setBusy(true);setMsg('');
+    const {data,error}=await supabase.from('organization_seasons').insert({
+      organization_id:orgId,
+      name:newSeasonName.trim(),
+      start_date:newSeasonStart||null,
+      end_date:newSeasonEnd||null,
+      is_active:true,
+      is_current:seasons.filter((x:any)=>x.is_active).length===0
+    }).select('id,name,is_current').single();
+    if(error)setMsg(error.message);
+    else{
+      setNewSeasonName('');setNewSeasonStart('');setNewSeasonEnd('');
+      setMsg(`${data.name} season created.`);
+      await load();
+    }
+    setBusy(false);
+  }
+
+  async function setCurrentSeason(id:string){
+    setBusy(true);setMsg('');
+    const {error}=await supabase.rpc('set_current_organization_season_for_admin',{p_organization_id:orgId,p_season_id:id});
+    setMsg(error?error.message:'Current season updated.');
+    if(!error){setSeasonId(id);await load();}
+    setBusy(false);
+  }
+
+  async function archiveSeason(s:any){
+    if(!window.confirm(`Archive ${s.name}?`))return;
+    const {error}=await supabase.from('organization_seasons').update({is_active:false,is_current:false,updated_at:new Date().toISOString()}).eq('id',s.id);
+    setMsg(error?error.message:`${s.name} archived.`);
+    if(!error)await load();
   }
 
   async function saveLabels(){
@@ -207,11 +253,51 @@ export default function OrganizationGroups(){
           <div className="field"><label>{divisionLabel}</label><input placeholder="Example: 8U Boys" value={division} onChange={e=>setDivision(e.target.value)}/></div>
           <div className="field"><label>{levelLabel}</label><input placeholder="Example: Double A" value={level} onChange={e=>setLevel(e.target.value)}/></div>
           <div className="field"><label>{groupLabel}</label><input required placeholder="Example: Stars" value={groupName} onChange={e=>setGroupName(e.target.value)}/></div>
-          <div className="field"><label>Season</label><input placeholder="Example: Spring 2027" value={season} onChange={e=>setSeason(e.target.value)}/></div>
+          <div className="field"><label>Season</label>
+            {seasons.some((s:any)=>s.is_active) ? <select value={seasonId} onChange={e=>{setSeasonId(e.target.value);setSeason(seasons.find((s:any)=>s.id===e.target.value)?.name||'')}}>
+              <option value="">No season</option>
+              {seasons.filter((s:any)=>s.is_active).map((s:any)=><option key={s.id} value={s.id}>{s.name}{s.is_current?' · Current':''}</option>)}
+            </select> : <input placeholder="Example: Spring 2027" value={season} onChange={e=>setSeason(e.target.value)}/>}
+          </div>
           <button className="btn green" disabled={busy || !groupName.trim()}>{busy?'Saving…':`Create ${groupLabel}`}</button>
         </form>
       </section>
     </div>
+
+
+    <section className="card" style={{marginTop:24}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:16,flexWrap:'wrap'}}>
+        <div>
+          <h2 style={{margin:'0 0 4px'}}>Seasons</h2>
+          <div className="muted">Keep current and past rosters separate without deleting historical teams.</div>
+        </div>
+      </div>
+
+      <div className="grid two" style={{marginTop:16}}>
+        <div className="form">
+          <div className="field"><label>Season name</label><input placeholder="Example: Spring 2027" value={newSeasonName} onChange={e=>setNewSeasonName(e.target.value)}/></div>
+          <div className="row">
+            <div className="field"><label>Start date</label><input type="date" value={newSeasonStart} onChange={e=>setNewSeasonStart(e.target.value)}/></div>
+            <div className="field"><label>End date</label><input type="date" value={newSeasonEnd} onChange={e=>setNewSeasonEnd(e.target.value)}/></div>
+          </div>
+          <button className="btn green" type="button" disabled={busy||!newSeasonName.trim()} onClick={createSeason}>Add season</button>
+        </div>
+
+        <div className="list">
+          {seasons.map((s:any)=><div className="item" key={s.id} style={{padding:12}}>
+            <div>
+              <strong>{s.name}</strong>{s.is_current&&<span className="status green" style={{marginLeft:8}}>Current</span>}{!s.is_active&&<span className="status red" style={{marginLeft:8}}>Archived</span>}
+              <div className="muted" style={{fontSize:13,marginTop:3}}>{[s.start_date,s.end_date].filter(Boolean).join(' → ') || 'Dates not set'}</div>
+            </div>
+            {s.is_active&&<div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+              {!s.is_current&&<button className="btn secondary" type="button" onClick={()=>setCurrentSeason(s.id)}>Make current</button>}
+              <button className="btn secondary" type="button" onClick={()=>archiveSeason(s)}>Archive</button>
+            </div>}
+          </div>)}
+          {seasons.length===0&&<div className="muted">No seasons created yet.</div>}
+        </div>
+      </div>
+    </section>
 
     <section className="card" style={{marginTop:24}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,flexWrap:'wrap'}}>
