@@ -159,7 +159,7 @@ export default function OrganizationGroups(){
     <div style={{display:'flex',justifyContent:'space-between',gap:16,alignItems:'flex-start',flexWrap:'wrap'}}>
       <div>
         <h1 style={{marginBottom:8}}>{org.name}</h1>
-        <p className="muted" style={{margin:0}}>Build the hierarchy managers use to sort and review people.</p>
+        <p className="muted" style={{margin:0}}>Teams and groups are normally created from participant registration. Managers can review, correct, or create exceptions here.</p>
       </div>
       <a className="btn secondary" href={`/organization-dashboard?org=${orgId}`}>Back to organization home</a>
     </div>
@@ -177,7 +177,8 @@ export default function OrganizationGroups(){
       </section>
 
       <section className="card">
-        <h2 style={{marginTop:0}}>Create {groupLabel}</h2>
+        <h2 style={{marginTop:0}}>Create {groupLabel} manually</h2>
+        <p className="muted">Use this only when a team/group needs to be added before someone registers.</p>
         <form className="form" onSubmit={createGroup}>
           <div className="field"><label>{divisionLabel}</label><input placeholder="Example: 8U Boys" value={division} onChange={e=>setDivision(e.target.value)}/></div>
           <div className="field"><label>{levelLabel}</label><input placeholder="Example: Double A" value={level} onChange={e=>setLevel(e.target.value)}/></div>
@@ -203,7 +204,7 @@ export default function OrganizationGroups(){
           const compliant=assigned.filter((m:any)=>m.is_compliant).length;
           return <div className="item" key={g.id} style={{alignItems:'flex-start'}}>
             <div>
-              <strong>{g.group_name}</strong>
+              <strong>{g.group_name}</strong>{g.needs_manager_review && <span className="status amber" style={{marginLeft:8}}>Review</span>}
               <div className="muted" style={{marginTop:4}}>{[g.division_name,g.level_name,g.season].filter(Boolean).join(' · ') || 'No additional classification'}</div>
               <div style={{marginTop:8,fontSize:13}}>{assigned.length} people · {compliant} compliant · {assigned.length-compliant} need review/attention</div>
             </div>
