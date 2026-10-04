@@ -103,6 +103,36 @@ export default function ActiveClearAdmin(){
     setMsg(status==='resolved'?'Manager request resolved.':'Manager request dismissed.');
   }
 
+  async function decideManagerCredential(item:ManagerRequest,result:'verified'|'does_not_meet'){
+    if(!item.credential_id)return;
+    let note:string|null=null;
+    if(result!=='verified'){
+      note=window.prompt('Reviewer note for this credential.');
+      if(note===null)return;
+    }
+    setBusyId(item.request_id);setMsg('');
+    const {error:reviewError}=await supabase.rpc('resolve_activeclear_review',{
+      p_credential_id:item.credential_id,
+      p_result:result,
+      p_note:note||null
+    });
+    if(reviewError){setMsg(reviewError.message);setBusyId(null);return;}
+
+    const resolution=result==='verified'
+      ? 'Credential verified by ActiveClear.'
+      : (note?.trim() || 'Credential does not meet ActiveClear requirements.');
+    const {error:requestError}=await supabase.rpc('resolve_manager_review_request_for_activeclear_admin',{
+      p_request_id:item.request_id,
+      p_status:'resolved',
+      p_resolution_note:resolution
+    });
+    if(requestError){setMsg(requestError.message);setBusyId(null);return;}
+
+    await load();
+    setBusyId(null);
+    setMsg(result==='verified'?'Credential verified and manager request resolved.':'Credential marked Does Not Meet and manager request resolved.');
+  }
+
   async function decide(item:QueueItem,result:string){
     let note:string|null=null;
     if(result!=='verified'){note=window.prompt('Optional reviewer note.');if(note===null)return;}
@@ -162,7 +192,9 @@ export default function ActiveClearAdmin(){
           <div style={{fontSize:13,lineHeight:1.35}}>{item.note || 'No manager note provided.'}</div>
           <div style={{display:'flex',gap:6,flexWrap:'wrap',justifyContent:'flex-end'}}>
             {item.document_path && <button className="btn secondary" type="button" onClick={()=>openManagerRequestDocument(item)} style={{padding:'7px 10px'}}>Document</button>}
-            <button className="btn green" type="button" disabled={busyId===item.request_id} onClick={()=>resolveManagerRequest(item,'resolved')} style={{padding:'7px 10px'}}>Resolve</button>
+            {item.credential_id && <button className="btn green" type="button" disabled={busyId===item.request_id} onClick={()=>decideManagerCredential(item,'verified')} style={{padding:'7px 10px'}}>Verify</button>}
+            {item.credential_id && <button className="btn" type="button" disabled={busyId===item.request_id} onClick={()=>decideManagerCredential(item,'does_not_meet')} style={{background:'#fde7e7',color:'#9a2626',padding:'7px 10px'}}>Does Not Meet</button>}
+            <button className="btn secondary" type="button" disabled={busyId===item.request_id} onClick={()=>resolveManagerRequest(item,'resolved')} style={{padding:'7px 10px'}}>Resolve only</button>
             <button className="btn secondary" type="button" disabled={busyId===item.request_id} onClick={()=>resolveManagerRequest(item,'dismissed')} style={{padding:'7px 10px'}}>Dismiss</button>
           </div>
         </div>)
