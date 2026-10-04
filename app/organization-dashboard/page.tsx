@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect,useState } from 'react';
+import { useEffect,useMemo,useState } from 'react';
 import { useRouter } from 'next/navigation';
 import AppShell from '@/components/AppShell';
 import { supabase } from '@/lib/supabase';
@@ -10,10 +10,9 @@ export default function OrganizationDashboard(){
   const [orgId,setOrgId]=useState('');
   const [org,setOrg]=useState<any>(null);
   const [roles,setRoles]=useState<any[]>([]);
-  const [admins,setAdmins]=useState<any[]>([]);
-  const [members,setMembers]=useState<any[]>([]);
   const [requirements,setRequirements]=useState<any[]>([]);
-  const [compliance,setCompliance]=useState({total_users:0,compliant_users:0,noncompliant_users:0});
+  const [roster,setRoster]=useState<any[]>([]);
+  const [groups,setGroups]=useState<any[]>([]);
   const [loading,setLoading]=useState(true);
 
   useEffect(()=>{
@@ -34,88 +33,152 @@ export default function OrganizationDashboard(){
 
       if(!admin){router.replace('/organization');return;}
 
-      const [{data:o},{data:r},{data:a},{data:m},{data:reqs},{data:summary}] = await Promise.all([
+      const [{data:o},{data:r},{data:reqs},{data:rosterData},{data:groupData}] = await Promise.all([
         supabase.from('organizations').select('*').eq('id',orgId).maybeSingle(),
         supabase.from('organization_roles').select('*').eq('organization_id',orgId).eq('is_active',true).order('name'),
-        supabase.from('organization_admins').select('user_id,role,title').eq('organization_id',orgId),
-        supabase.from('organization_memberships').select('id,user_id,role,status').eq('organization_id',orgId).eq('status','active'),
         supabase.from('organization_requirements').select('id').eq('organization_id',orgId).eq('active',true),
-        supabase.rpc('get_organization_compliance_summary',{p_organization_id:orgId})
+        supabase.rpc('list_organization_roster_for_admin',{p_organization_id:orgId}),
+        supabase.from('organization_groups').select('*').eq('organization_id',orgId).eq('is_active',true).order('division_name').order('level_name').order('group_name')
       ]);
 
       setOrg(o);
       setRoles(r||[]);
-      setAdmins(a||[]);
-      setMembers(m||[]);
       setRequirements(reqs||[]);
-      setCompliance(summary?.[0] || {total_users:0,compliant_users:0,noncompliant_users:0});
+      setRoster(rosterData||[]);
+      setGroups(groupData||[]);
       setLoading(false);
     })();
   },[orgId,router]);
+
+  const members=useMemo(()=>roster.filter((r:any)=>r.membership_id && r.membership_status==='active'),[roster]);
+  const compliant=members.filter((r:any)=>r.is_compliant).length;
+  const needsAttention=members.filter((r:any)=>(r.needs_attention_count||0)>0).length;
+  const pending=members.filter((r:any)=>(r.pending_count||0)>0).length;
+  const expiring=members.filter((r:any)=>(r.expiring_soon_count||0)>0).length;
+
+  const groupSummary=useMemo(()=>{
+    return groups.map((g:any)=>{
+      const assigned=members.filter((m:any)=>(m.groups||[]).some((x:any)=>x.id===g.id));
+      return {
+        ...g,
+        total:assigned.length,
+        compliant:assigned.filter((m:any)=>m.is_compliant).length,
+        attention:assigned.filter((m:any)=>(m.needs_attention_count||0)>0).length
+      };
+    });
+  },[groups,members]);
 
   if(loading) return <div className="shell">Loading organization…</div>;
   if(!org) return <div className="shell">Organization not found.</div>;
 
   const bodies=org.governing_bodies?.length ? org.governing_bodies.join(' · ') : org.governing_body;
+  const divisionLabel=org.division_label || 'Division';
+  const levelLabel=org.level_label || 'Level';
+  const groupLabel=org.group_label || 'Team / Group';
 
   return <AppShell>
     <div className="eyebrow">Organization home</div>
-    <h1>{org.name}</h1>
-    <p className="muted">{[org.organization_type,org.sport,bodies].filter(Boolean).join(' · ')}</p>
+    <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:16,flexWrap:'wrap'}}>
+      <div>
+        <h1 style={{marginBottom:8}}>{org.name}</h1>
+        <p className="muted" style={{margin:0}}>{[org.organization_type,org.sport,bodies].filter(Boolean).join(' · ')}</p>
+      </div>
+      <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+        <a className="btn secondary" href={`/organization-profile?org=${orgId}`}>Club profile</a>
+        <a className="btn secondary" href={`/organization-manage?org=${orgId}`}>Roles & requirements</a>
+        <a className="btn green" href={`/organization-groups?org=${orgId}`}>Manage {groupLabel}s</a>
+      </div>
+    </div>
 
-    <div className="grid three" style={{marginTop:24}}>
+    <section className="card" style={{marginTop:20,padding:18}}>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(5,minmax(120px,1fr))',gap:12}}>
+        {[
+          ['Active people',members.length],
+          ['Compliant',compliant],
+          ['Needs attention',needsAttention],
+          ['Pending review',pending],
+          ['Expiring ≤60 days',expiring]
+        ].map(([label,value]:any)=><div key={label} style={{padding:'8px 10px'}}>
+          <div className="muted" style={{fontSize:13}}>{label}</div>
+          <div style={{fontSize:32,fontWeight:800,marginTop:4}}>{value}</div>
+        </div>)}
+      </div>
+    </section>
+
+    <div className="grid two" style={{marginTop:20}}>
       <section className="card">
-        <h2>Club profile</h2>
-        <p className="muted">Edit organization details, contact information, sport, affiliations, website, and address.</p>
-        <a className="btn green" href={`/organization-profile?org=${orgId}`}>Edit club profile</a>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12}}>
+          <div>
+            <h2 style={{margin:'0 0 4px'}}>People & compliance</h2>
+            <div className="muted">{members.length} active participant{members.length===1?'':'s'}</div>
+          </div>
+          <a className="btn green" href={`/organization-users?org=${orgId}`}>Open roster</a>
+        </div>
+
+        <div className="list" style={{marginTop:16}}>
+          {members.slice(0,6).map((m:any)=>{
+            const name=[m.first_name,m.last_name].filter(Boolean).join(' ') || m.email || 'Participant';
+            const status=m.is_compliant ? 'Compliant' : (m.pending_count||0)>0 ? 'Pending' : 'Needs attention';
+            const cls=m.is_compliant ? 'green' : (m.pending_count||0)>0 ? 'amber' : 'red';
+            return <div className="item" key={m.user_id} style={{padding:12}}>
+              <div>
+                <strong>{name}</strong>
+                <div className="muted" style={{fontSize:13,marginTop:3}}>
+                  {m.membership_role || 'Participant'}
+                  {(m.groups||[]).length ? ' · '+(m.groups||[]).map((g:any)=>g.group_name).join(', ') : ''}
+                </div>
+              </div>
+              <span className={'status '+cls}>{status}</span>
+            </div>
+          })}
+          {members.length===0 && <div className="muted">No active participants yet.</div>}
+        </div>
       </section>
 
       <section className="card">
-        <h2>Users & access</h2>
-        <div className="metric">{admins.length + members.length}</div>
-        <p className="muted">{admins.length} admin{admins.length===1?'':'s'} · {members.length} active member{members.length===1?'':'s'}</p>
-        <a className="btn green" href={`/organization-users?org=${orgId}`}>Manage users</a>
-      </section>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12}}>
+          <div>
+            <h2 style={{margin:'0 0 4px'}}>{groupLabel}s</h2>
+            <div className="muted">Organize by {divisionLabel.toLowerCase()} → {levelLabel.toLowerCase()} → {groupLabel.toLowerCase()}</div>
+          </div>
+          <a className="btn secondary" href={`/organization-groups?org=${orgId}`}>Manage</a>
+        </div>
 
-      <section className="card">
-        <h2>Roles & requirements</h2>
-        <div className="metric">{roles.length}</div>
-        <p className="muted">{roles.length} current role{roles.length===1?'':'s'} · {requirements.length} requirement{requirements.length===1?'':'s'}</p>
-        <a className="btn green" href={`/organization-manage?org=${orgId}`}>Manage roles & requirements</a>
+        <div className="list" style={{marginTop:16}}>
+          {groupSummary.slice(0,6).map((g:any)=><a className="item" key={g.id} href={`/organization-users?org=${orgId}&group=${g.id}`} style={{padding:12}}>
+            <div>
+              <strong>{g.group_name}</strong>
+              <div className="muted" style={{fontSize:13,marginTop:3}}>
+                {[g.division_name,g.level_name,g.season].filter(Boolean).join(' · ') || 'No additional classification'}
+              </div>
+            </div>
+            <div style={{textAlign:'right'}}>
+              <strong>{g.total}</strong>
+              <div className="muted" style={{fontSize:12}}>{g.compliant} compliant{g.attention ? ` · ${g.attention} attention` : ''}</div>
+            </div>
+          </a>)}
+          {groups.length===0 && <div className="muted">No {groupLabel.toLowerCase()}s created yet.</div>}
+        </div>
       </section>
     </div>
 
-    <section className="card" style={{marginTop:24}}>
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12}}>
-        <h2 style={{margin:0}}>Compliance</h2>
-        <a className="btn secondary" href={`/organization-users?org=${orgId}`}>View users</a>
-      </div>
-      <div className="grid three" style={{marginTop:16}}>
+    <section className="card" style={{marginTop:20}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,flexWrap:'wrap'}}>
         <div>
-          <div className="muted">Users</div>
-          <div className="metric">{compliance.total_users}</div>
+          <h2 style={{margin:'0 0 4px'}}>Organization setup</h2>
+          <div className="muted">{roles.length} role{roles.length===1?'':'s'} · {requirements.length} requirement{requirements.length===1?'':'s'} · {groups.length} active {groupLabel.toLowerCase()}{groups.length===1?'':'s'}</div>
         </div>
-        <div>
-          <div className="muted">Compliant</div>
-          <div className="metric">{compliance.compliant_users}</div>
-        </div>
-        <div>
-          <div className="muted">Non-compliant</div>
-          <div className="metric">{compliance.noncompliant_users}</div>
+        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+          <a className="btn secondary" href={`/organization-manage?org=${orgId}`}>Edit roles & requirements</a>
+          <a className="btn secondary" href={`/organization-groups?org=${orgId}`}>Edit hierarchy</a>
         </div>
       </div>
     </section>
 
-    <section className="card" style={{marginTop:24}}>
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12}}>
-        <h2 style={{margin:0}}>Current roles</h2>
-        <a className="btn secondary" href={`/organization-manage?org=${orgId}`}>Edit roles</a>
-      </div>
-      {roles.length===0 ? <p className="muted">No roles created yet.</p> :
-        <div className="list" style={{marginTop:14}}>
-          {roles.map(role=><div className="item" key={role.id}><strong>{role.name}</strong></div>)}
-        </div>
+    <style jsx>{`
+      @media(max-width:800px){
+        section:first-of-type > div{grid-template-columns:1fr 1fr !important}
       }
-    </section>
+    `}</style>
   </AppShell>;
 }
