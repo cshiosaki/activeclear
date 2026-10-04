@@ -204,7 +204,7 @@ export default function OrganizationDashboard(){
 
           return <div className="rosterRow" key={m.user_id}>
             <div>
-              <strong>{name}</strong>
+              <a href={`/organization-member?org=${orgId}&user=${m.user_id}`} style={{fontWeight:800,textDecoration:'underline',textUnderlineOffset:3}}>{name}</a>
               {m.email && <div className="muted small">{m.email}</div>}
             </div>
             <div className="small">
