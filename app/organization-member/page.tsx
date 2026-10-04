@@ -20,6 +20,7 @@ export default function OrganizationMember(){
   const [groupIds,setGroupIds]=useState<string[]>([]);
   const [msg,setMsg]=useState('');
   const [busy,setBusy]=useState(false);
+  const [documentUrls,setDocumentUrls]=useState<Record<string,string>>({});
 
   useEffect(()=>{
     const params=new URLSearchParams(window.location.search);
@@ -93,20 +94,39 @@ export default function OrganizationMember(){
   }
 
   async function requestFollowup(req:any){
-    const note=window.prompt('What should be corrected or reviewed?');
+    const note=window.prompt('What should ActiveClear review or correct?');
     if(note===null)return;
-    const {error}=await supabase.rpc('log_organization_member_followup_for_admin',{
+    const {error}=await supabase.rpc('request_organization_member_review_for_admin',{
       p_organization_id:orgId,
       p_user_id:userId,
       p_requirement_id:req.requirement_id,
       p_credential_id:req.credential_id||null,
-      p_note:note.trim()||'Manager requested review of this requirement.'
+      p_note:note.trim()||'Organization manager requested ActiveClear review.'
     });
     if(error)setMsg(error.message);
     else{
-      setMsg('Follow-up request added to this member’s history.');
+      setMsg('Review request sent to the ActiveClear Admin queue.');
       await load();
     }
+  }
+
+  async function openCredentialDocument(req:any){
+    const path=req?.credential?.document_path;
+    if(!path){
+      setMsg('No supporting document is available for this credential.');
+      return;
+    }
+    if(documentUrls[req.credential_id]){
+      window.open(documentUrls[req.credential_id],'_blank','noopener,noreferrer');
+      return;
+    }
+    const {data,error}=await supabase.storage.from('credential-documents').createSignedUrl(path,600);
+    if(error||!data?.signedUrl){
+      setMsg(error?.message || 'Could not open the credential document.');
+      return;
+    }
+    setDocumentUrls(v=>({...v,[req.credential_id]:data.signedUrl}));
+    window.open(data.signedUrl,'_blank','noopener,noreferrer');
   }
 
   async function addNote(){
@@ -261,7 +281,10 @@ export default function OrganizationMember(){
               {cred?.reviewer_notes && <div className="muted small" style={{marginTop:8}}>Review note: {cred.reviewer_notes}</div>}
             </div>
 
-            <button className="btn secondary" type="button" onClick={()=>requestFollowup(req)}>Request follow-up</button>
+            <div style={{display:'flex',gap:8,flexWrap:'wrap',justifyContent:'flex-end'}}>
+              {cred?.document_path && <button className="btn secondary" type="button" onClick={()=>openCredentialDocument(req)}>View document</button>}
+              <button className="btn secondary" type="button" onClick={()=>requestFollowup(req)}>Send to ActiveClear</button>
+            </div>
           </div>
         })}
         {requirements.length===0 && <div className="muted">No requirements apply to this member’s role.</div>}
