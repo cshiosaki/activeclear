@@ -22,6 +22,8 @@ export default function OrganizationGroups(){
   const [groupLabel,setGroupLabel]=useState('Team / Group');
   const [msg,setMsg]=useState('');
   const [busy,setBusy]=useState(false);
+  const [mergeSource,setMergeSource]=useState<any>(null);
+  const [mergeTargetId,setMergeTargetId]=useState('');
 
   useEffect(()=>setOrgId(new URLSearchParams(window.location.search).get('org')||''),[]);
 
@@ -114,6 +116,27 @@ export default function OrganizationGroups(){
       if(selectedGroup?.id===g.id){setSelectedGroup(null);setSelectedMembers([]);}
       await load();
     }
+  }
+
+  async function mergeGroup(){
+    if(!mergeSource || !mergeTargetId)return;
+    const target=groups.find((g:any)=>g.id===mergeTargetId);
+    if(!target)return;
+    const ok=window.confirm(`Merge "${mergeSource.group_name}" into "${target.group_name}"? Everyone assigned to the first group will be moved to the second, and the first group will be archived.`);
+    if(!ok)return;
+    setBusy(true);setMsg('');
+    const {error}=await supabase.rpc('merge_organization_groups_for_admin',{
+      p_organization_id:orgId,
+      p_source_group_id:mergeSource.id,
+      p_target_group_id:mergeTargetId
+    });
+    if(error)setMsg(error.message);
+    else{
+      setMsg(`${mergeSource.group_name} merged into ${target.group_name}.`);
+      setMergeSource(null);setMergeTargetId('');
+      await load();
+    }
+    setBusy(false);
   }
 
   async function openAssignments(g:any){
@@ -212,6 +235,7 @@ export default function OrganizationGroups(){
             <div style={{display:'flex',gap:8,flexWrap:'wrap',justifyContent:'flex-end'}}>
               <button className="btn secondary" type="button" onClick={()=>openAssignments(g)}>Assign people</button>
               <button className="btn secondary" type="button" onClick={()=>editGroup(g)}>Edit</button>
+              <button className="btn secondary" type="button" onClick={()=>{setMergeSource(g);setMergeTargetId('')}}>Merge</button>
               <button className="btn" type="button" style={{background:'#fde7e7',color:'#9a2626'}} onClick={()=>archiveGroup(g)}>Archive</button>
             </div>
           </div>
@@ -219,6 +243,36 @@ export default function OrganizationGroups(){
         {groups.length===0 && <div className="muted">No {groupLabel.toLowerCase()}s created yet.</div>}
       </div>
     </section>
+
+
+    {mergeSource && <section className="card" style={{marginTop:24}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:12,flexWrap:'wrap'}}>
+        <div>
+          <div className="eyebrow">Merge duplicate</div>
+          <h2 style={{margin:'6px 0 4px'}}>Merge {mergeSource.group_name}</h2>
+          <div className="muted">Choose the correct {groupLabel.toLowerCase()} to keep. Members from this group will be reassigned automatically.</div>
+        </div>
+        <button className="btn secondary" type="button" onClick={()=>{setMergeSource(null);setMergeTargetId('')}}>Cancel</button>
+      </div>
+
+      <div className="field" style={{maxWidth:620,marginTop:16}}>
+        <label>Keep this {groupLabel}</label>
+        <select value={mergeTargetId} onChange={e=>setMergeTargetId(e.target.value)}>
+          <option value="">Select target {groupLabel.toLowerCase()}</option>
+          {groups.filter((g:any)=>g.id!==mergeSource.id).map((g:any)=><option key={g.id} value={g.id}>
+            {[g.division_name,g.level_name,g.group_name,g.season].filter(Boolean).join(' · ')}
+          </option>)}
+        </select>
+      </div>
+
+      <div className="notice" style={{marginTop:12}}>
+        <strong>{mergeSource.group_name}</strong> will be archived after the merge. Existing member assignments will move to the selected group.
+      </div>
+
+      <button className="btn green" type="button" disabled={busy || !mergeTargetId} onClick={mergeGroup} style={{marginTop:14}}>
+        {busy?'Merging…':'Merge groups'}
+      </button>
+    </section>}
 
     {selectedGroup && <section className="card" style={{marginTop:24}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:12,flexWrap:'wrap'}}>
