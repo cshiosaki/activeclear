@@ -200,7 +200,7 @@ export default function OrganizationDashboard(){
           const cls=m.is_compliant ? 'green' : (m.pending_count||0)>0 ? 'amber' : 'red';
           const needs=(m.needs_items||[]).map((x:any)=>x.name);
           const pendingItems=(m.pending_items||[]).map((x:any)=>x.name);
-          const expiringItems=(m.expiring_items||[]).map((x:any)=>x.name);
+          const expiringItems=(m.expiring_items||[]);
 
           return <div className="rosterRow" key={m.user_id}>
             <div>
@@ -218,7 +218,7 @@ export default function OrganizationDashboard(){
             <div className="small">
               {needs.length>0 && <div><strong>Needs:</strong> {needs.join(', ')}</div>}
               {pendingItems.length>0 && <div><strong>Pending:</strong> {pendingItems.join(', ')}</div>}
-              {expiringItems.length>0 && <div><strong>Expiring:</strong> {expiringItems.map((x:any)=>x.name).join(', ')}</div>}
+              {expiringItems.length>0 && <div><strong>Expiring:</strong> {expiringItems.map((x:any)=>x.expires ? `${x.name} (${x.expires})` : x.name).join(', ')}</div>}
               {needs.length===0 && pendingItems.length===0 && expiringItems.length===0 && <span className="muted">No action needed</span>}
             </div>
             <div><span className={'status '+cls}>{status}</span></div>
