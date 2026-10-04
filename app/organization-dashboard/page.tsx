@@ -111,6 +111,33 @@ export default function OrganizationDashboard(){
     setStatusFilter(status);
   }
 
+  function exportCsv(){
+    const q=(value:any)=>`"${String(value??'').replace(/"/g,'""')}"`;
+    const rows=[
+      ['Name','Email',groupLabel,'Role','Needs Attention','Pending','Expiring Soon','Compliance'],
+      ...filtered.map((m:any)=>{
+        const name=[m.first_name,m.last_name].filter(Boolean).join(' ') || m.email || 'Participant';
+        const groupText=(m.groups||[]).map((g:any)=>[g.division_name,g.level_name,g.group_name,g.season].filter(Boolean).join(' / ')).join('; ');
+        const needs=(m.needs_items||[]).map((x:any)=>x.name).join('; ');
+        const pendingItems=(m.pending_items||[]).map((x:any)=>x.name).join('; ');
+        const expiringItems=(m.expiring_items||[]).map((x:any)=>x.expires ? `${x.name} (${x.expires})` : x.name).join('; ');
+        return [name,m.email||'',groupText,m.membership_role||'Participant',needs,pendingItems,expiringItems,m.is_compliant?'Compliant':'Needs attention'];
+      })
+    ];
+    const csv=rows.map(row=>row.map(q).join(',')).join('\n');
+    const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;
+    a.download=`${(org?.name||'organization').replace(/[^a-z0-9]+/gi,'_')}_compliance_roster.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function printRoster(){
+    window.print();
+  }
+
   if(loading) return <div className="shell">Loading organization…</div>;
   if(!org) return <div className="shell">Organization not found.</div>;
 
@@ -160,7 +187,11 @@ export default function OrganizationDashboard(){
             <h2 style={{margin:'0 0 4px'}}>People & compliance</h2>
             <div className="muted">All members are shown here. Use the filters to sort the roster.</div>
           </div>
-          <div className="muted">{filtered.length} of {members.length} people</div>
+          <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+            <div className="muted">{filtered.length} of {members.length} people</div>
+            <button className="btn secondary noPrint" type="button" onClick={exportCsv}>Export CSV</button>
+            <button className="btn secondary noPrint" type="button" onClick={printRoster}>Print / PDF</button>
+          </div>
         </div>
 
         <div className="filterGrid" style={{marginTop:14}}>
@@ -290,6 +321,12 @@ export default function OrganizationDashboard(){
         .filterGrid{grid-template-columns:1fr}
         .rosterHeader{display:none}
         .rosterRow{grid-template-columns:1fr}
+      }
+      @media print{
+        .noPrint, .summaryGrid, .filterGrid, button, nav{display:none !important}
+        .card{border:0 !important;box-shadow:none !important}
+        .rosterHeader,.rosterRow{grid-template-columns:1.3fr 1.3fr .8fr 2fr .8fr}
+        .rosterRow{break-inside:avoid}
       }
     `}</style>
   </AppShell>;
