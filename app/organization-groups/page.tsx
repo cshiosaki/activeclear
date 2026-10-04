@@ -99,7 +99,8 @@ export default function OrganizationGroups(){
       division_name:d.trim()||null,
       level_name:l.trim()||null,
       group_name:n.trim(),
-      season:s.trim()||null
+      season:s.trim()||null,
+      needs_manager_review:false
     }).eq('id',g.id);
     setMsg(error?error.message:`${groupLabel} updated.`);
     if(!error)await load();
