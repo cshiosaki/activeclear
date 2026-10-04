@@ -13,6 +13,8 @@ export default function OrganizationMember(){
   const [detail,setDetail]=useState<any>(null);
   const [roles,setRoles]=useState<any[]>([]);
   const [groups,setGroups]=useState<any[]>([]);
+  const [notes,setNotes]=useState<any[]>([]);
+  const [newNote,setNewNote]=useState('');
   const [editAssignment,setEditAssignment]=useState(false);
   const [roleId,setRoleId]=useState('');
   const [groupIds,setGroupIds]=useState<string[]>([]);
@@ -34,12 +36,13 @@ export default function OrganizationMember(){
       .select('organization_id').eq('organization_id',orgId).eq('user_id',user.id).maybeSingle();
     if(!admin){router.replace('/organization');return;}
 
-    const [{data:o},{data:d,error:detailError},{data:r},{data:g}] = await Promise.all([
+    const [{data:o},{data:d,error:detailError},{data:r},{data:g},{data:n}] = await Promise.all([
       supabase.from('organizations').select('*').eq('id',orgId).maybeSingle(),
       supabase.rpc('get_organization_member_detail_for_admin',{p_organization_id:orgId,p_user_id:userId}),
       supabase.from('organization_roles').select('id,name').eq('organization_id',orgId).eq('is_active',true).order('name'),
       supabase.from('organization_groups').select('*').eq('organization_id',orgId).eq('is_active',true)
-        .order('division_name').order('level_name').order('group_name')
+        .order('division_name').order('level_name').order('group_name'),
+      supabase.rpc('get_organization_member_notes_for_admin',{p_organization_id:orgId,p_user_id:userId})
     ]);
 
     if(detailError){setMsg(detailError.message);return;}
@@ -47,6 +50,7 @@ export default function OrganizationMember(){
     setDetail(d);
     setRoles(r||[]);
     setGroups(g||[]);
+    setNotes(n||[]);
     setRoleId(d?.membership?.role_id || '');
     setGroupIds((d?.groups||[]).map((x:any)=>x.id));
   }
@@ -101,6 +105,36 @@ export default function OrganizationMember(){
     if(error)setMsg(error.message);
     else{
       setMsg('Follow-up request added to this member’s history.');
+      await load();
+    }
+  }
+
+  async function addNote(){
+    if(!newNote.trim())return;
+    setBusy(true);setMsg('');
+    const {error}=await supabase.rpc('add_organization_member_note_for_admin',{
+      p_organization_id:orgId,
+      p_user_id:userId,
+      p_note:newNote.trim()
+    });
+    if(error)setMsg(error.message);
+    else{
+      setNewNote('');
+      setMsg('Organization note added.');
+      await load();
+    }
+    setBusy(false);
+  }
+
+  async function deleteNote(noteId:string){
+    if(!window.confirm('Delete this organization note?'))return;
+    const {error}=await supabase.rpc('delete_organization_member_note_for_admin',{
+      p_organization_id:orgId,
+      p_note_id:noteId
+    });
+    if(error)setMsg(error.message);
+    else{
+      setMsg('Organization note deleted.');
       await load();
     }
   }
@@ -232,6 +266,50 @@ export default function OrganizationMember(){
         })}
         {requirements.length===0 && <div className="muted">No requirements apply to this member’s role.</div>}
       </div>
+    </section>
+
+
+    <section className="card" style={{marginTop:18}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:12,flexWrap:'wrap'}}>
+        <div>
+          <h2 style={{margin:'0 0 4px'}}>Organization notes</h2>
+          <div className="muted small">Optional internal notes for this member. These are visible to organization managers, not the member.</div>
+        </div>
+        <div className="muted small">{notes.length} note{notes.length===1?'':'s'}</div>
+      </div>
+
+      <div style={{marginTop:14}}>
+        <textarea
+          placeholder="Add a note about this member, assignment, follow-up, or other organization-specific information…"
+          value={newNote}
+          onChange={e=>setNewNote(e.target.value)}
+          style={{minHeight:90}}
+        />
+        <div style={{display:'flex',justifyContent:'flex-end',marginTop:8}}>
+          <button className="btn green" type="button" disabled={busy || !newNote.trim()} onClick={addNote}>
+            {busy?'Saving…':'Add note'}
+          </button>
+        </div>
+      </div>
+
+      {notes.length>0 && <div className="list" style={{marginTop:16}}>
+        {notes.map((n:any)=><div className="item" key={n.id} style={{alignItems:'flex-start',padding:12}}>
+          <div style={{whiteSpace:'pre-wrap',lineHeight:1.45}}>
+            {n.note}
+            <div className="muted small" style={{marginTop:6}}>
+              {n.created_at ? new Date(n.created_at).toLocaleString() : ''}
+            </div>
+          </div>
+          <button
+            className="btn"
+            type="button"
+            style={{background:'#fde7e7',color:'#9a2626',padding:'7px 10px'}}
+            onClick={()=>deleteNote(n.id)}
+          >
+            Delete
+          </button>
+        </div>)}
+      </div>}
     </section>
 
     <section className="card" style={{marginTop:18}}>
