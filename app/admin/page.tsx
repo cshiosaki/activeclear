@@ -14,6 +14,12 @@ type QueueItem = {
   extracted_issue_date:string|null; extracted_expiration_date:string|null; reviewed_at:string|null;
 };
 type Filter='needs_review'|'pending'|'verified_today'|'failed_today'|'all';
+type ManagerRequest = {
+  request_id:string; organization_id:string; organization_name:string; user_id:string;
+  person_name:string; requirement_id:string|null; requirement_name:string|null;
+  credential_id:string|null; credential_type:string|null; document_path:string|null;
+  note:string|null; status:string; created_at:string;
+};
 
 function isToday(value:string|null){
   if(!value)return false;
@@ -34,6 +40,8 @@ function cls(result:string){ return result==='verified'?'green':result==='pendin
 export default function ActiveClearAdmin(){
   const router=useRouter();
   const [rows,setRows]=useState<QueueItem[]>([]);
+  const [managerRequests,setManagerRequests]=useState<ManagerRequest[]>([]);
+  const [requestUrls,setRequestUrls]=useState<Record<string,string>>({});
   const [loading,setLoading]=useState(true);
   const [authorized,setAuthorized]=useState(false);
   const [filter,setFilter]=useState<Filter>('needs_review');
@@ -49,8 +57,12 @@ export default function ActiveClearAdmin(){
     const {data:access}=await supabase.from('activeclear_admins').select('role,is_active').eq('user_id',user.id).eq('is_active',true).maybeSingle();
     if(!access){setAuthorized(false);setLoading(false);return;}
     setAuthorized(true);
-    const {data,error}=await supabase.rpc('get_activeclear_review_queue');
+    const [{data,error},{data:managerData,error:managerError}] = await Promise.all([
+      supabase.rpc('get_activeclear_review_queue'),
+      supabase.rpc('get_manager_review_requests_for_activeclear_admin')
+    ]);
     if(error){setMsg(error.message);setRows([]);} else setRows((data||[]) as QueueItem[]);
+    if(managerError){setMsg(managerError.message);setManagerRequests([]);} else setManagerRequests((managerData||[]) as ManagerRequest[]);
     setLoading(false);
   }
 
@@ -62,6 +74,33 @@ export default function ActiveClearAdmin(){
     const {data,error}=await supabase.storage.from('credential-documents').createSignedUrl(item.document_path,900);
     if(error){setMsg(error.message);return;}
     if(data?.signedUrl)setSignedUrls(v=>({...v,[item.credential_id]:data.signedUrl}));
+  }
+
+  async function openManagerRequestDocument(item:ManagerRequest){
+    if(!item.document_path)return;
+    if(requestUrls[item.request_id]){
+      window.open(requestUrls[item.request_id],'_blank','noopener,noreferrer');
+      return;
+    }
+    const {data,error}=await supabase.storage.from('credential-documents').createSignedUrl(item.document_path,900);
+    if(error||!data?.signedUrl){setMsg(error?.message || 'Could not open document.');return;}
+    setRequestUrls(v=>({...v,[item.request_id]:data.signedUrl}));
+    window.open(data.signedUrl,'_blank','noopener,noreferrer');
+  }
+
+  async function resolveManagerRequest(item:ManagerRequest,status:'resolved'|'dismissed'){
+    const note=window.prompt(status==='resolved'?'Resolution note (optional).':'Reason for dismissal (optional).');
+    if(note===null)return;
+    setBusyId(item.request_id);setMsg('');
+    const {error}=await supabase.rpc('resolve_manager_review_request_for_activeclear_admin',{
+      p_request_id:item.request_id,
+      p_status:status,
+      p_resolution_note:note.trim()||null
+    });
+    if(error){setMsg(error.message);setBusyId(null);return;}
+    await load();
+    setBusyId(null);
+    setMsg(status==='resolved'?'Manager request resolved.':'Manager request dismissed.');
   }
 
   async function decide(item:QueueItem,result:string){
@@ -100,6 +139,35 @@ export default function ActiveClearAdmin(){
     <h1>Credential review queue</h1>
     <p className="muted">Fast review of credentials that need a master ActiveClear decision.</p>
     {msg&&<div className="notice" style={{marginTop:12}}>{msg}</div>}
+
+    <section className="card" style={{marginTop:18,padding:0,overflow:'hidden'}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,padding:'14px 16px',borderBottom:'1px solid #e7ece8'}}>
+        <div>
+          <h2 style={{margin:'0 0 3px'}}>Organization manager requests</h2>
+          <div className="muted" style={{fontSize:13}}>Requests sent from organization member compliance pages.</div>
+        </div>
+        <span className={'status '+(managerRequests.length?'amber':'green')}>{managerRequests.length} pending</span>
+      </div>
+      {managerRequests.length===0 ? <div className="muted" style={{padding:16}}>No organization manager requests waiting.</div> :
+        managerRequests.map(item=><div key={item.request_id} style={{display:'grid',gridTemplateColumns:'1.1fr 1.2fr 1.3fr 2fr auto',gap:12,alignItems:'center',padding:'11px 16px',borderBottom:'1px solid #edf0ed'}}>
+          <div>
+            <strong>{item.person_name || 'Unknown member'}</strong>
+            <div className="muted" style={{fontSize:12}}>{item.organization_name}</div>
+          </div>
+          <div>
+            <strong style={{fontSize:13}}>{item.requirement_name || 'General review'}</strong>
+            <div className="muted" style={{fontSize:12}}>{item.credential_type || 'No credential attached'}</div>
+          </div>
+          <div className="muted" style={{fontSize:12}}>{new Date(item.created_at).toLocaleString()}</div>
+          <div style={{fontSize:13,lineHeight:1.35}}>{item.note || 'No manager note provided.'}</div>
+          <div style={{display:'flex',gap:6,flexWrap:'wrap',justifyContent:'flex-end'}}>
+            {item.document_path && <button className="btn secondary" type="button" onClick={()=>openManagerRequestDocument(item)} style={{padding:'7px 10px'}}>Document</button>}
+            <button className="btn green" type="button" disabled={busyId===item.request_id} onClick={()=>resolveManagerRequest(item,'resolved')} style={{padding:'7px 10px'}}>Resolve</button>
+            <button className="btn secondary" type="button" disabled={busyId===item.request_id} onClick={()=>resolveManagerRequest(item,'dismissed')} style={{padding:'7px 10px'}}>Dismiss</button>
+          </div>
+        </div>)
+      }
+    </section>
 
     <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:18,alignItems:'center'}}>
       {([
