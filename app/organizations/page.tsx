@@ -27,6 +27,9 @@ export default function Organizations(){
   const [requirements,setRequirements]=useState<Record<string,Requirement[]>>({});
   const [roles,setRoles]=useState<Record<string,any[]>>({});
   const [selectedRole,setSelectedRole]=useState<Record<string,string>>({});
+  const [registrationDetails,setRegistrationDetails]=useState<Record<string,{division:string,level:string,group:string,season:string}>>({});
+  const [registrationLabels,setRegistrationLabels]=useState<Record<string,{division_label:string,level_label:string,group_label:string}>>({});
+  const [registeringOrg,setRegisteringOrg]=useState<string|null>(null);
   const [credentials,setCredentials]=useState<any[]>([]);
   const [reviews,setReviews]=useState<any[]>([]);
   const [exemptions,setExemptions]=useState<any[]>([]);
@@ -57,6 +60,12 @@ export default function Organizations(){
     ]);
 
     setOrgs(o||[]);
+    const labelEntries=await Promise.all((o||[]).map(async (org:any)=>{
+      const {data}=await supabase.rpc('get_organization_registration_labels',{p_organization_id:org.id});
+      const row=data?.[0] || {division_label:'Division',level_label:'Level',group_label:'Team / Group'};
+      return [org.id,row] as const;
+    }));
+    setRegistrationLabels(Object.fromEntries(labelEntries));
     setMemberships(m||[]);
     setCredentials(c||[]);
     setReviews(reviewData||[]);
@@ -126,14 +135,21 @@ export default function Organizations(){
 
   async function connect(orgId:string){
     const roleId=selectedRole[orgId] || roles[orgId]?.[0]?.id || null;
-    const role=roles[orgId]?.find((x:any)=>x.id===roleId);
-    await supabase.from('organization_memberships').insert({
-      organization_id:orgId,
-      user_id:uid,
-      role:role?.name || 'Participant',
-      role_id:roleId,
-      status:'active'
+    const details=registrationDetails[orgId] || {division:'',level:'',group:'',season:''};
+    const {error}=await supabase.rpc('connect_current_user_to_organization',{
+      p_organization_id:orgId,
+      p_role_id:roleId,
+      p_division_name:details.division.trim() || null,
+      p_level_name:details.level.trim() || null,
+      p_group_name:details.group.trim() || null,
+      p_season:details.season.trim() || null
     });
+    if(error){
+      setMsg(error.message);
+      return;
+    }
+    setRegistrationDetails({...registrationDetails,[orgId]:{division:'',level:'',group:'',season:''}});
+    setRegisteringOrg(null);
     await load(uid);
     setOpenOrg(orgId);
   }
@@ -274,20 +290,59 @@ export default function Organizations(){
                   {isOpen?'Hide requirements':'View requirements'}
                 </button>
               )}
-              {!m && (roles[o.id]||[]).length>0 && (
-                <select
-                  value={selectedRole[o.id] || roles[o.id][0]?.id || ''}
-                  onChange={e=>setSelectedRole({...selectedRole,[o.id]:e.target.value})}
-                  style={{minWidth:180}}
-                >
-                  {(roles[o.id]||[]).map((role:any)=><option key={role.id} value={role.id}>{role.name}</option>)}
-                </select>
-              )}
               {m
                 ? <button className="btn secondary" onClick={()=>disconnect(m.id)}>Disconnect</button>
-                : <button className="btn green" onClick={()=>connect(o.id)}>Connect</button>}
+                : <button className="btn green" onClick={()=>setRegisteringOrg(registeringOrg===o.id?null:o.id)}>
+                    {registeringOrg===o.id?'Cancel':'Register / Connect'}
+                  </button>}
             </div>
           </div>
+
+          {!m && registeringOrg===o.id && (() => {
+            const labels=registrationLabels[o.id] || {division_label:'Division',level_label:'Level',group_label:'Team / Group'};
+            const details=registrationDetails[o.id] || {division:'',level:'',group:'',season:''};
+            const update=(field:'division'|'level'|'group'|'season',value:string)=>
+              setRegistrationDetails({...registrationDetails,[o.id]:{...details,[field]:value}});
+            return <div style={{padding:'0 16px 16px'}}>
+              <div className="notice" style={{marginBottom:12}}>
+                <strong>Your organization assignment</strong>
+                <div className="muted" style={{marginTop:4}}>
+                  Enter the team or group information you belong to. If another person already entered the same assignment, ActiveClear will reuse it instead of creating a duplicate.
+                </div>
+              </div>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:12}}>
+                {(roles[o.id]||[]).length>0 && <div className="field">
+                  <label>Role</label>
+                  <select
+                    value={selectedRole[o.id] || roles[o.id][0]?.id || ''}
+                    onChange={e=>setSelectedRole({...selectedRole,[o.id]:e.target.value})}
+                  >
+                    {(roles[o.id]||[]).map((role:any)=><option key={role.id} value={role.id}>{role.name}</option>)}
+                  </select>
+                </div>}
+                <div className="field">
+                  <label>{labels.division_label}</label>
+                  <input placeholder="Example: 8U Boys" value={details.division} onChange={e=>update('division',e.target.value)}/>
+                </div>
+                <div className="field">
+                  <label>{labels.level_label}</label>
+                  <input placeholder="Example: Double A" value={details.level} onChange={e=>update('level',e.target.value)}/>
+                </div>
+                <div className="field">
+                  <label>{labels.group_label}</label>
+                  <input placeholder="Example: Stars" value={details.group} onChange={e=>update('group',e.target.value)}/>
+                </div>
+                <div className="field">
+                  <label>Season</label>
+                  <input placeholder="Example: Spring 2027" value={details.season} onChange={e=>update('season',e.target.value)}/>
+                </div>
+              </div>
+              <div style={{display:'flex',gap:8,alignItems:'center',marginTop:14,flexWrap:'wrap'}}>
+                <button className="btn green" type="button" onClick={()=>connect(o.id)}>Join organization</button>
+                <span className="muted" style={{fontSize:13}}>Managers can correct or consolidate team information later.</span>
+              </div>
+            </div>
+          })()}
 
           {m && isOpen && (
             <div style={{padding:'0 16px 16px'}}>
